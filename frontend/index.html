@@ -1,0 +1,29 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>aag-studio</title>
+  <style>
+    html, body { margin: 0; height: 100%; font-family: sans-serif; }
+    body { display: grid; grid-template-columns: 200px 1fr 260px; }
+    #palette, #sidebar { padding: 8px; overflow: auto; }
+    #graph { height: 100%; }
+    #properties { min-height: 4em; border-bottom: 1px solid #ccc; padding-bottom: 8px; margin-bottom: 8px; }
+    #violations { list-style: none; padding: 0; color: #b00; font-size: 12px; }
+    button { display: block; width: 100%; text-align: left; margin: 2px 0; }
+  </style>
+</head>
+<body>
+  <div id="palette"></div>
+  <div id="graph"></div>
+  <div id="sidebar">
+    <div id="properties"></div>
+    <ul id="violations"></ul>
+  </div>
+  <script src="/vendor/lodash.min.js"></script>
+  <script src="/vendor/cytoscape.min.js"></script>
+  <script src="/vendor/cytoscape-edgehandles.min.js"></script>
+  <script>cytoscape.use(cytoscapeEdgehandles);</script>
+  <script type="module" src="/main.js"></script>
+</body>
+</html>

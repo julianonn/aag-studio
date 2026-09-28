@@ -5,12 +5,14 @@ from pathlib import Path
 
 import yaml
 from fastapi import FastAPI, HTTPException
+from fastapi.staticfiles import StaticFiles
 
 from aag_studio.rag import Graph, LabelSet, validate_rag
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 LABELS_PATH = REPO_ROOT / "labels.yaml"
 GRAPHS_DIR = REPO_ROOT / "graphs"
+FRONTEND_DIR = REPO_ROOT / "frontend"
 
 app = FastAPI()
 
@@ -41,9 +43,16 @@ def get_graph(name: str) -> dict:
 
 @app.put("/api/graphs/{name}")
 def put_graph(name: str, graph: Graph) -> dict:
-    label_set = LabelSet.load(LABELS_PATH)
-    violations = validate_rag(graph, label_set)
+    violations = validate_rag(graph, LabelSet.load(LABELS_PATH))
     if violations:
         raise HTTPException(status_code=400, detail=violations)
     _graph_path(name).write_text(graph.model_dump_json(indent=2))
     return {}
+
+
+@app.post("/api/validate")
+def validate(graph: Graph) -> list[str]:
+    return validate_rag(graph, LabelSet.load(LABELS_PATH))
+
+
+app.mount("/", StaticFiles(directory=FRONTEND_DIR, html=True), name="frontend")

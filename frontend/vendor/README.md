@@ -1,0 +1,3 @@
+cytoscape.js 3.30.2 — https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.30.2/cytoscape.min.js
+cytoscape-edgehandles 4.0.1 — https://cdn.jsdelivr.net/npm/cytoscape-edgehandles@4.0.1/cytoscape-edgehandles.min.js (package ships no minified build; this is jsDelivr's on-the-fly Terser output of the real source, verified by hash against jsDelivr's published file manifest). Its browser build needs a global `_` (lodash) with memoize/throttle, and isn't auto-registered — call `cytoscape.use(cytoscapeEdgehandles)` before using it.
+lodash 4.17.21 — https://cdnjs.cloudflare.com/ajax/libs/lodash.js/4.17.21/lodash.min.js (required by cytoscape-edgehandles's browser build)
