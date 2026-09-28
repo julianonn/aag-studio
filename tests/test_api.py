@@ -52,15 +52,45 @@ def test_missing_graph_is_404(client):
     assert client.get("/api/graphs/does_not_exist").status_code == 404
 
 
-def test_list_graphs(client, tmp_path):
-    (tmp_path / "one.json").write_text(json.dumps({"vertices": [], "edges": []}))
-    assert client.get("/api/graphs").json() == ["one"]
+def test_list_graphs(client):
+    client.put("/api/graphs/one", json={"vertices": [], "edges": []})
+    graphs = client.get("/api/graphs").json()
+    assert [g["name"] for g in graphs] == ["one"]
+    assert "created" in graphs[0] and "modified" in graphs[0]
 
 
-def test_list_graphs_excludes_layout_sidecars(client, tmp_path):
+def test_list_graphs_excludes_layout_sidecars(client):
+    client.put("/api/graphs/one", json={"vertices": [], "edges": []})
+    graphs = client.get("/api/graphs").json()
+    assert [g["name"] for g in graphs] == ["one"]
+
+
+def test_created_timestamp_does_not_change_on_later_saves(client):
+    client.put("/api/graphs/one", json={"vertices": [], "edges": []})
+    first_created = client.get("/api/graphs").json()[0]["created"]
+
+    client.put("/api/graphs/one", json={"vertices": [{"id": "a", "label": "resource"}], "edges": []})
+    second_created = client.get("/api/graphs").json()[0]["created"]
+
+    assert first_created == second_created
+
+
+def test_rename_graph_moves_file_and_layout(client, tmp_path):
     (tmp_path / "one.json").write_text(json.dumps({"vertices": [], "edges": []}))
-    (tmp_path / "one.layout.json").write_text("{}")
-    assert client.get("/api/graphs").json() == ["one"]
+    (tmp_path / "one.layout.json").write_text('{"positions": {}}')
+    response = client.post("/api/graphs/one/rename", json={"new_name": "two"})
+    assert response.status_code == 200
+    assert not (tmp_path / "one.json").exists()
+    assert (tmp_path / "two.json").exists()
+    assert (tmp_path / "two.layout.json").exists()
+
+
+def test_rename_to_existing_name_is_rejected(client, tmp_path):
+    (tmp_path / "one.json").write_text(json.dumps({"vertices": [], "edges": []}))
+    (tmp_path / "two.json").write_text(json.dumps({"vertices": [], "edges": []}))
+    response = client.post("/api/graphs/one/rename", json={"new_name": "two"})
+    assert response.status_code == 400
+    assert (tmp_path / "one.json").exists()
 
 
 def test_delete_graph_removes_it_and_its_layout(client, tmp_path):
@@ -74,6 +104,12 @@ def test_delete_graph_removes_it_and_its_layout(client, tmp_path):
 
 def test_delete_missing_graph_is_404(client):
     assert client.delete("/api/graphs/does_not_exist").status_code == 404
+
+
+def test_frontend_graph_route_serves_index_html(client):
+    response = client.get("/graphs/anything")
+    assert response.status_code == 200
+    assert b"<title>" in response.content
 
 
 def test_missing_layout_returns_empty(client):

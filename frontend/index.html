@@ -3,22 +3,7 @@
 <head>
   <meta charset="utf-8">
   <title>aag-studio</title>
-  <style>
-    html, body { margin: 0; height: 100%; font-family: sans-serif; }
-    #library { padding: 16px; max-width: 500px; }
-    #graph-list { list-style: none; padding: 0; }
-    #graph-list li { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; }
-    #editor { display: grid; grid-template-columns: 200px 1fr 260px; grid-template-rows: auto 1fr; height: 100%; }
-    #toolbar { grid-column: 1 / -1; padding: 6px; border-bottom: 1px solid #ccc; }
-    #palette, #sidebar { padding: 8px; overflow: auto; }
-    #graph { height: 100%; }
-    #properties { min-height: 4em; border-bottom: 1px solid #ccc; padding-bottom: 8px; margin-bottom: 8px; }
-    #violations { list-style: none; padding: 0; color: #b00; font-size: 12px; }
-    button { text-align: left; margin: 2px 0; }
-    #palette button { display: block; width: 100%; }
-    #connect-toggle.active { background: #cde; }
-    [hidden] { display: none !important; }
-  </style>
+  <link rel="stylesheet" href="/style.css">
 </head>
 <body>
   <div id="library">
@@ -31,7 +16,8 @@
   <div id="editor" hidden>
     <div id="toolbar">
       <button id="back-to-library">← Library</button>
-      <button id="connect-toggle">Connect</button>
+      <span id="graph-name"></span>
+      <button id="rename-graph">rename</button>
     </div>
     <div id="palette"></div>
     <div id="graph"></div>
