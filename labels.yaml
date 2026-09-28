@@ -5,15 +5,61 @@ vertex_labels:
   resource: []
   agent: []
   A: []
+
   credential: [resource]
+  phone_number: [resource]
   password: [credential]
   pin: [credential]
+  session_token: [credential] # authenticated session token (JWT, OAuth2 access token, etc). This is what keeps a gmail app session alive.
+  passkey: [credential]
+  hardware_security_key: [credential]
+  security_question: [credential]
+  app_password: [credential] # google app password functionality (basically an API key for a user account), not a password for an app
+  recovery_contact: [credential] # apple has this
+
   biometric: [credential]
-  auth_token: [credential]
+  touch_id: [biometric]
+  face_id: [biometric]
+
+  ephemeral_credential: [credential]
+  recovery_code: [ephemeral_credential]
+  sms_otp: [ephemeral_credential]
+  email_otp: [ephemeral_credential]
+  totp_app: [ephemeral_credential] # time based one time password (TOTP) - e.g., Duo/google authenticator, etc. 
+  magic_link: [ephemeral_credential]  # usually sent to email
+
   account: [resource]
   google: [account]
   apple: [account]
+  tmobile: [account]
+
   device: [resource]
+  apple_device: [device]
+  iphone: [apple_device]
+  unlocked_iphone: [iphone]
+  locked_iphone: [iphone]
+  macbook: [apple_device]
+  unlocked_macbook: [macbook]
+  locked_macbook: [macbook]
+  ipad: [apple_device]
+  unlocked_ipad: [ipad]
+  locked_ipad: [ipad]
+  apple_watch: [apple_device]
+  unlocked_apple_watch: [apple_watch]
+  locked_apple_watch: [apple_watch]
+
+  windows_computer: [device]
+  android: [device]
+
+  google_pixel: [android]
+  unlocked_google_pixel: [google_pixel]
+  locked_google_pixel: [google_pixel]
+  samsung_galaxy: [android]
+  unlocked_samsung_galaxy: [samsung_galaxy]
+  locked_samsung_galaxy: [samsung_galaxy]
+
+
+
   user: [agent]
   adversary: [agent]
 

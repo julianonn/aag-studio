@@ -1,13 +1,20 @@
 {
   "vertices": [
     {"id": "usr", "label": "user"},
-    {"id": "iphone", "label": "device"},
+    {"id": "my_phone", "label": "unlocked_iphone"},
+    {"id": "iphone_passcode", "label": "pin"},
+    {"id": "am_unlock", "label": "A"},
     {"id": "apple_password", "label": "password"},
-    {"id": "a1", "label": "A"}
+    {"id": "***@icloud.com", "label": "apple"},
+    {"id": "am_apple", "label": "A"}
   ],
   "edges": [
-    {"id": "e1", "src": "usr", "tgt": "iphone", "label": "ha", "time": [[0, null]]},
-    {"id": "e2", "src": "apple_password", "tgt": "a1", "label": "ga", "time": [[0, null]]},
-    {"id": "e3", "src": "a1", "tgt": "iphone", "label": "ga", "time": [[0, null]]}
+    {"id": "e1", "src": "usr", "tgt": "my_phone", "label": "ha", "time": [[0, null]]},
+    {"id": "e2", "src": "usr", "tgt": "iphone_passcode", "label": "ha", "time": [[0, null]]},
+    {"id": "e3", "src": "iphone_passcode", "tgt": "am_unlock", "label": "ga", "time": [[0, null]]},
+    {"id": "e4", "src": "am_unlock", "tgt": "my_phone", "label": "ga", "time": [[0, null]]},
+    {"id": "e5", "src": "usr", "tgt": "apple_password", "label": "ha", "time": [[0, null]]},
+    {"id": "e6", "src": "apple_password", "tgt": "am_apple", "label": "ga", "time": [[0, null]]},
+    {"id": "e7", "src": "am_apple", "tgt": "***@icloud.com", "label": "ga", "time": [[0, null]]}
   ]
 }
