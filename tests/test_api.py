@@ -121,3 +121,13 @@ def test_save_then_load_layout_round_trips(client):
     put_response = client.put("/api/graphs/test_graph/layout", json=positions)
     assert put_response.status_code == 200
     assert client.get("/api/graphs/test_graph/layout").json() == positions
+
+
+def test_layout_save_does_not_clobber_created_timestamp(client):
+    client.put("/api/graphs/one", json={"vertices": [], "edges": []})
+    created = client.get("/api/graphs").json()[0]["created"]
+
+    client.put("/api/graphs/one/layout", json={"positions": {"a": [1, 2]}})
+
+    graphs = client.get("/api/graphs").json()
+    assert graphs[0]["created"] == created

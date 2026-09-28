@@ -16,21 +16,32 @@
   <div id="editor" hidden>
     <div id="toolbar">
       <button id="back-to-library">← Library</button>
-      <span id="graph-name"></span>
-      <button id="rename-graph">rename</button>
     </div>
-    <div id="palette"></div>
+
+    <div id="icon-strip">
+      <button id="icon-add" title="Add vertex">+</button>
+      <button id="icon-issues" title="Issues">!<span id="issues-count"></span></button>
+      <button id="icon-info" title="Graph info">i</button>
+    </div>
+
+    <div id="side-panel" hidden>
+      <div id="panel-add" hidden></div>
+      <div id="panel-issues" hidden>
+        <ul id="violations-list"></ul>
+      </div>
+      <div id="panel-info" hidden>
+        <div><strong id="graph-name"></strong></div>
+        <button id="rename-graph">rename</button>
+        <div id="graph-meta"></div>
+      </div>
+    </div>
+
     <div id="graph"></div>
-    <div id="sidebar">
-      <div id="properties"></div>
-      <ul id="violations"></ul>
-    </div>
   </div>
 
   <script src="/vendor/lodash.min.js"></script>
   <script src="/vendor/cytoscape.min.js"></script>
   <script src="/vendor/cytoscape-edgehandles.min.js"></script>
-  <script>cytoscape.use(cytoscapeEdgehandles);</script>
   <script type="module" src="/main.js"></script>
 </body>
 </html>

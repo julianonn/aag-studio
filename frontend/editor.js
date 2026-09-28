@@ -1,8 +1,10 @@
-// The graph editor: canvas render, palette, typed edge tool, reconnect,
-// context menu, properties panel and the validation panel.
+// The graph editor: canvas render, palette, typed edge tool, context menu,
+// properties panel and the validation panel. Selection/hover overlays
+// (connect arrows, reconnect handles, resize handles) live in selection-handles.js.
 
 import { renderPalette } from "./palette.js";
 import { showContextMenu } from "./contextmenu.js";
+import { attachSelectionHandles } from "./selection-handles.js";
 import { topLevelKind, inferredEdgeLabel, nextId, validateGraph, debounce } from "./graph-utils.js";
 
 const rootStyle = getComputedStyle(document.documentElement);
@@ -12,15 +14,22 @@ const KIND_COLOR = {
   A: rootStyle.getPropertyValue("--kind-A").trim(),
 };
 const KIND_DEFAULT_COLOR = rootStyle.getPropertyValue("--kind-default").trim();
+const SELECTED_COLOR = rootStyle.getPropertyValue("--color-selected").trim();
 
 export async function openEditor(graphName, labelSet, { onExit, onRename }) {
   let graph = await fetch(`/api/graphs/${graphName}`).then((r) => r.json());
   const rawLayout = await fetch(`/api/graphs/${graphName}/layout`).then((r) => r.json());
   const positions = rawLayout.positions ?? {};
   const edgeStyles = rawLayout.edge_styles ?? {};
+  const sizes = rawLayout.sizes ?? {};
 
-  const violationsEl = document.getElementById("violations");
-  const propertiesEl = document.getElementById("properties");
+  const issuesCountEl = document.getElementById("issues-count");
+  const violationsList = document.getElementById("violations-list");
+
+  const propertiesEl = document.createElement("div");
+  propertiesEl.className = "floating-toolbar";
+  propertiesEl.hidden = true;
+  document.getElementById("graph").append(propertiesEl);
 
   function saveGraph() {
     fetch(`/api/graphs/${graphName}`, {
@@ -35,15 +44,16 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
     fetch(`/api/graphs/${graphName}/layout`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ positions, edge_styles: edgeStyles }),
+      body: JSON.stringify({ positions, edge_styles: edgeStyles, sizes }),
     });
   }
   const debouncedSaveLayout = debounce(saveLayout, 1000);
 
   async function refreshViolations() {
     const violations = await validateGraph(graph);
-    violationsEl.replaceChildren(
-      ...(violations.length ? violations : ["no violations"]).map((v) => {
+    issuesCountEl.textContent = violations.length || "";
+    violationsList.replaceChildren(
+      ...violations.map((v) => {
         const li = document.createElement("li");
         li.textContent = v;
         return li;
@@ -54,7 +64,12 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
   function elementsFromGraph() {
     return [
       ...graph.vertices.map((v) => ({
-        data: { id: v.id, label: v.label, kind: topLevelKind(v.label, labelSet.vertex_labels) },
+        data: {
+          id: v.id,
+          label: v.label,
+          kind: topLevelKind(v.label, labelSet.vertex_labels),
+          ...(sizes[v.id] ? { width: sizes[v.id][0], height: sizes[v.id][1] } : {}),
+        },
         position: positions[v.id] ? { x: positions[v.id][0], y: positions[v.id][1] } : undefined,
       })),
       ...graph.edges.map((e) => ({
@@ -90,9 +105,12 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
           height: "label",
           padding: "10px",
           "font-size": 11,
+          "overlay-opacity": 0,
         },
       },
       { selector: "node[kind = 'A']", style: { shape: "diamond", label: "A", width: 30, height: 30, padding: 0 } },
+      { selector: "node[width]", style: { width: "data(width)", height: "data(height)" } },
+      { selector: "node:selected", style: { "border-width": 3, "border-color": SELECTED_COLOR } },
       {
         selector: "edge",
         style: {
@@ -100,12 +118,15 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
           "curve-style": "data(curveStyle)",
           "target-arrow-shape": "triangle",
           "font-size": 8,
+          "overlay-opacity": 0,
         },
       },
+      { selector: "edge:selected", style: { "line-color": SELECTED_COLOR, "target-arrow-color": SELECTED_COLOR, width: 3 } },
     ],
   });
 
   function rerender() {
+    hideProperties();
     cy.elements().remove();
     cy.add(elementsFromGraph());
     if (!Object.keys(positions).length) cy.layout({ name: "breadthfirst" }).run();
@@ -154,116 +175,6 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
     await applyGraph({ vertices: graph.vertices, edges: graph.edges.filter((e) => e.id !== edgeId) });
   }
 
-  renderPalette(document.getElementById("palette"), labelSet.vertex_labels, tryAddVertex);
-
-  document.getElementById("graph").addEventListener("contextmenu", (evt) => evt.preventDefault());
-
-  const eh = cy.edgehandles({
-    canConnect: (source, target) => !!inferredEdgeLabel(labelSet, source.data("label"), target.data("label")),
-    edgeParams: () => ({}),
-    complete: (sourceNode, targetNode, addedEles) => {
-      addedEles.remove();
-      if (reconnecting) {
-        const { edgeId, movingEnd } = reconnecting;
-        reconnecting = null;
-        tryReconnectEdge(edgeId, movingEnd, targetNode.id());
-      } else {
-        tryAddEdge(sourceNode.id(), targetNode.id());
-      }
-    },
-  });
-
-  // The library has no built-in hover handle, so we draw our own small dot
-  // at the node's edge on hover. Dragging the node body always moves it;
-  // dragging from the dot starts an edge (Figma/Canva/Miro-style), no mode toggle.
-  const handleEl = document.createElement("div");
-  handleEl.className = "edge-handle";
-  handleEl.hidden = true;
-  document.getElementById("graph").append(handleEl);
-
-  let hoveredNode = null;
-
-  function positionHandle(node) {
-    const pos = node.renderedPosition();
-    handleEl.style.left = `${pos.x + node.renderedOuterWidth() / 2}px`;
-    handleEl.style.top = `${pos.y}px`;
-  }
-
-  cy.on("mouseover", "node", (evt) => {
-    hoveredNode = evt.target;
-    positionHandle(hoveredNode);
-    handleEl.hidden = false;
-  });
-  cy.on("mouseout", "node", () => {
-    hoveredNode = null;
-    handleEl.hidden = true;
-  });
-  cy.on("pan zoom position", () => {
-    if (hoveredNode) positionHandle(hoveredNode);
-  });
-
-  handleEl.addEventListener("mousedown", (evt) => {
-    evt.preventDefault();
-    handleEl.hidden = true;
-    if (hoveredNode) eh.start(hoveredNode);
-  });
-
-  // Selecting an edge shows a drag handle at each end; dragging one to a
-  // different node reconnects that end. edgehandles can only start a drag
-  // from a fixed anchor toward a dropped target, so to move the *source*
-  // end (target fixed) we anchor on the target and swap direction on completion.
-  let reconnecting = null; // { edgeId, movingEnd: "src" | "tgt" }
-  const sourceHandleEl = document.createElement("div");
-  sourceHandleEl.className = "edge-handle";
-  sourceHandleEl.hidden = true;
-  const targetHandleEl = document.createElement("div");
-  targetHandleEl.className = "edge-handle";
-  targetHandleEl.hidden = true;
-  document.getElementById("graph").append(sourceHandleEl, targetHandleEl);
-
-  let selectedEdge = null;
-
-  function positionReconnectHandles(edge) {
-    const srcPos = cy.getElementById(edge.data("source")).renderedPosition();
-    const tgtPos = cy.getElementById(edge.data("target")).renderedPosition();
-    sourceHandleEl.style.left = `${srcPos.x}px`;
-    sourceHandleEl.style.top = `${srcPos.y}px`;
-    targetHandleEl.style.left = `${tgtPos.x}px`;
-    targetHandleEl.style.top = `${tgtPos.y}px`;
-  }
-
-  cy.on("select", "edge", (evt) => {
-    selectedEdge = evt.target;
-    positionReconnectHandles(selectedEdge);
-    sourceHandleEl.hidden = false;
-    targetHandleEl.hidden = false;
-  });
-  cy.on("unselect", "edge", () => {
-    selectedEdge = null;
-    sourceHandleEl.hidden = true;
-    targetHandleEl.hidden = true;
-  });
-  cy.on("pan zoom position", () => {
-    if (selectedEdge) positionReconnectHandles(selectedEdge);
-  });
-
-  sourceHandleEl.addEventListener("mousedown", (evt) => {
-    evt.preventDefault();
-    if (!selectedEdge) return;
-    reconnecting = { edgeId: selectedEdge.id(), movingEnd: "src" };
-    sourceHandleEl.hidden = true;
-    targetHandleEl.hidden = true;
-    eh.start(cy.getElementById(selectedEdge.data("target")));
-  });
-  targetHandleEl.addEventListener("mousedown", (evt) => {
-    evt.preventDefault();
-    if (!selectedEdge) return;
-    reconnecting = { edgeId: selectedEdge.id(), movingEnd: "tgt" };
-    sourceHandleEl.hidden = true;
-    targetHandleEl.hidden = true;
-    eh.start(cy.getElementById(selectedEdge.data("source")));
-  });
-
   async function tryReconnectEdge(edgeId, movingEnd, droppedNodeId) {
     const edge = graph.edges.find((e) => e.id === edgeId);
     const updated = movingEnd === "src" ? { ...edge, src: droppedNodeId } : { ...edge, tgt: droppedNodeId };
@@ -282,6 +193,63 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
       edges: graph.edges.map((e) => (e.id === edgeId ? updated : e)),
     });
   }
+
+  renderPalette(document.getElementById("panel-add"), labelSet.vertex_labels, tryAddVertex);
+
+  // Left sidebar: a thin icon strip always visible; clicking an icon opens
+  // its panel next to the strip, clicking it again (or another icon)
+  // collapses back to just the strip — only one panel open at a time.
+  const editorEl = document.getElementById("editor");
+  const sidePanelEl = document.getElementById("side-panel");
+  const panels = {
+    add: document.getElementById("panel-add"),
+    issues: document.getElementById("panel-issues"),
+    info: document.getElementById("panel-info"),
+  };
+  const icons = {
+    add: document.getElementById("icon-add"),
+    issues: document.getElementById("icon-issues"),
+    info: document.getElementById("icon-info"),
+  };
+  let openPanel = null;
+
+  function togglePanel(name) {
+    if (openPanel === name) {
+      openPanel = null;
+      sidePanelEl.hidden = true;
+      editorEl.classList.remove("panel-open");
+      icons[name].classList.remove("active");
+      return;
+    }
+    if (openPanel) icons[openPanel].classList.remove("active");
+    openPanel = name;
+    for (const [key, el] of Object.entries(panels)) el.hidden = key !== name;
+    sidePanelEl.hidden = false;
+    editorEl.classList.add("panel-open");
+    icons[name].classList.add("active");
+  }
+
+  icons.add.onclick = () => togglePanel("add");
+  icons.issues.onclick = () => togglePanel("issues");
+  icons.info.onclick = () => togglePanel("info");
+
+  document.getElementById("graph").addEventListener("contextmenu", (evt) => evt.preventDefault());
+
+  const eh = cy.edgehandles({
+    canConnect: (source, target) => !!inferredEdgeLabel(labelSet, source.data("label"), target.data("label")),
+    edgeParams: () => ({}),
+    hoverDelay: 0,
+  });
+
+  attachSelectionHandles(cy, eh, document.getElementById("graph"), {
+    onConnect: tryAddEdge,
+    onReconnect: tryReconnectEdge,
+    onResize: (vertexId, width, height, x, y) => {
+      sizes[vertexId] = [width, height];
+      positions[vertexId] = [x, y];
+      debouncedSaveLayout();
+    },
+  });
 
   cy.on("cxttap", "node", (evt) => {
     const node = evt.target;
@@ -306,7 +274,24 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
     debouncedSaveLayout();
   }
 
+  let propertiesTarget = null;
+
+  function positionPropertiesToolbar(element) {
+    const box = element.renderedBoundingBox();
+    propertiesEl.style.left = `${(box.x1 + box.x2) / 2}px`;
+    propertiesEl.style.top = `${box.y1}px`;
+  }
+
+  function hideProperties() {
+    propertiesTarget = null;
+    propertiesEl.hidden = true;
+  }
+
   function renderProperties(element) {
+    propertiesTarget = element;
+    propertiesEl.hidden = false;
+    positionPropertiesToolbar(element);
+
     if (element.isNode()) {
       propertiesEl.textContent = `${element.id()} : ${element.data("label")}`;
       return;
@@ -342,6 +327,12 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
   }
 
   cy.on("tap", "node, edge", (evt) => renderProperties(evt.target));
+  cy.on("tap", (evt) => {
+    if (evt.target === cy) hideProperties();
+  });
+  cy.on("pan zoom position", () => {
+    if (propertiesTarget) positionPropertiesToolbar(propertiesTarget);
+  });
 
   cy.on("dragfree", "node", () => {
     cy.nodes().forEach((n) => (positions[n.id()] = [n.position("x"), n.position("y")]));
@@ -360,6 +351,13 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
 
   const graphNameEl = document.getElementById("graph-name");
   graphNameEl.textContent = graphName;
+
+  const graphMetaEl = document.getElementById("graph-meta");
+  const graphs = await fetch("/api/graphs").then((r) => r.json());
+  const thisGraph = graphs.find((g) => g.name === graphName);
+  if (thisGraph) {
+    graphMetaEl.textContent = `created ${new Date(thisGraph.created * 1000).toLocaleString()}`;
+  }
 
   document.getElementById("rename-graph").onclick = async () => {
     const newName = prompt("new name", graphName);

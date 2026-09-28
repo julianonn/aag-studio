@@ -119,7 +119,9 @@ def get_layout(name: str) -> dict:
 
 @app.put("/api/graphs/{name}/layout")
 def put_layout(name: str, layout: dict) -> dict:
-    _layout_path(name).write_text(json.dumps(layout, indent=2))
+    existing = _read_layout(name)
+    existing.update(layout)
+    _write_layout(name, existing)
     return {}
 
 
