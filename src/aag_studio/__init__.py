@@ -1,2 +1,4 @@
 def main() -> None:
-    print("Hello world!")
+    import uvicorn
+
+    uvicorn.run("aag_studio.api:app", reload=True)
