@@ -1,5 +1,5 @@
-// Fetches a graph and the label set, renders it with Cytoscape, and wires
-// up the palette, typed edge tool, properties panel and validation panel.
+// Library screen (list/open/new/delete graphs) and the graph editor
+// (palette, typed edge tool, properties panel, validation panel).
 
 import { renderPalette } from "./palette.js";
 
@@ -41,14 +41,84 @@ async function validateGraph(graph) {
   return response.json();
 }
 
-async function main() {
-  const labelSet = await fetch("/api/labels").then((r) => r.json());
+function debounce(fn, delayMs) {
+  let timer = null;
+  let lastArgs = null;
+  const debounced = (...args) => {
+    lastArgs = args;
+    clearTimeout(timer);
+    timer = setTimeout(() => fn(...lastArgs), delayMs);
+  };
+  debounced.flush = () => {
+    if (lastArgs === null) return;
+    clearTimeout(timer);
+    fn(...lastArgs);
+  };
+  return debounced;
+}
+
+const libraryEl = document.getElementById("library");
+const editorEl = document.getElementById("editor");
+const graphListEl = document.getElementById("graph-list");
+
+let labelSet = null;
+let currentCy = null;
+
+async function showLibrary() {
+  if (currentCy) {
+    currentCy.destroy();
+    currentCy = null;
+  }
+  editorEl.hidden = true;
+  libraryEl.hidden = false;
+
   const graphNames = await fetch("/api/graphs").then((r) => r.json());
-  const graphName = graphNames[0];
+  graphListEl.replaceChildren(
+    ...graphNames.map((name) => {
+      const li = document.createElement("li");
+      const openButton = document.createElement("button");
+      openButton.textContent = name;
+      openButton.onclick = () => openEditor(name);
+      const deleteButton = document.createElement("button");
+      deleteButton.textContent = "delete";
+      deleteButton.onclick = async () => {
+        if (!confirm(`delete graph "${name}"?`)) return;
+        await fetch(`/api/graphs/${name}`, { method: "DELETE" });
+        showLibrary();
+      };
+      li.append(openButton, deleteButton);
+      return li;
+    })
+  );
+}
+
+async function openEditor(graphName) {
+  libraryEl.hidden = true;
+  editorEl.hidden = false;
+
   let graph = await fetch(`/api/graphs/${graphName}`).then((r) => r.json());
+  const layout = await fetch(`/api/graphs/${graphName}/layout`).then((r) => r.json());
 
   const violationsEl = document.getElementById("violations");
   const propertiesEl = document.getElementById("properties");
+
+  function saveGraph() {
+    fetch(`/api/graphs/${graphName}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(graph),
+    });
+  }
+  const debouncedSaveGraph = debounce(saveGraph, 1000);
+
+  function saveLayout(positions) {
+    fetch(`/api/graphs/${graphName}/layout`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(positions),
+    });
+  }
+  const debouncedSaveLayout = debounce(saveLayout, 1000);
 
   async function refreshViolations() {
     const violations = await validateGraph(graph);
@@ -65,6 +135,7 @@ async function main() {
     return [
       ...graph.vertices.map((v) => ({
         data: { id: v.id, label: v.label, kind: topLevelKind(v.label, labelSet.vertex_labels) },
+        position: layout[v.id] ? { x: layout[v.id][0], y: layout[v.id][1] } : undefined,
       })),
       ...graph.edges.map((e) => ({
         data: { id: e.id, source: e.src, target: e.tgt, label: e.label, time: e.time },
@@ -75,7 +146,7 @@ async function main() {
   const cy = cytoscape({
     container: document.getElementById("graph"),
     elements: elementsFromGraph(),
-    layout: { name: "breadthfirst" },
+    layout: Object.keys(layout).length ? { name: "preset" } : { name: "breadthfirst" },
     style: [
       {
         selector: "node",
@@ -84,10 +155,17 @@ async function main() {
           "background-color": (n) => KIND_COLOR[n.data("kind")] ?? "#999",
           color: "#fff",
           "text-valign": "center",
-          "font-size": 10,
+          "text-halign": "center",
+          "text-wrap": "wrap",
+          "text-max-width": "80px",
+          shape: "round-rectangle",
+          width: "label",
+          height: "label",
+          padding: "10px",
+          "font-size": 11,
         },
       },
-      { selector: "node[kind = 'A']", style: { shape: "diamond", label: "A" } },
+      { selector: "node[kind = 'A']", style: { shape: "diamond", label: "A", width: 30, height: 30, padding: 0 } },
       {
         selector: "edge",
         style: {
@@ -99,11 +177,12 @@ async function main() {
       },
     ],
   });
+  currentCy = cy;
 
   function rerender() {
     cy.elements().remove();
     cy.add(elementsFromGraph());
-    cy.layout({ name: "breadthfirst" }).run();
+    if (!Object.keys(layout).length) cy.layout({ name: "breadthfirst" }).run();
   }
 
   async function tryAddVertex(label) {
@@ -117,6 +196,7 @@ async function main() {
     graph = candidate;
     rerender();
     refreshViolations();
+    debouncedSaveGraph();
   }
 
   async function tryAddEdge(sourceId, targetId) {
@@ -139,6 +219,7 @@ async function main() {
     graph = candidate;
     rerender();
     refreshViolations();
+    debouncedSaveGraph();
   }
 
   renderPalette(document.getElementById("palette"), labelSet.vertex_labels, tryAddVertex);
@@ -151,7 +232,19 @@ async function main() {
       tryAddEdge(sourceNode.id(), targetNode.id());
     },
   });
-  eh.enableDrawMode();
+
+  // The library has no hover-only handle mode: drawing an edge requires the
+  // whole node body to act as the handle, which conflicts with dragging a
+  // node to move it. So dragging and connecting are separate, explicit modes.
+  const connectToggle = document.getElementById("connect-toggle");
+  connectToggle.onclick = () => {
+    const nowActive = !connectToggle.classList.contains("active");
+    connectToggle.classList.toggle("active", nowActive);
+    if (nowActive) eh.enableDrawMode();
+    else eh.disableDrawMode();
+  };
+  connectToggle.classList.remove("active");
+  eh.disableDrawMode();
 
   function renderProperties(element) {
     if (element.isNode()) {
@@ -188,6 +281,7 @@ async function main() {
         }
         graph = candidate;
         refreshViolations();
+        debouncedSaveGraph();
       }
       start.onchange = commit;
       end.onchange = commit;
@@ -197,7 +291,37 @@ async function main() {
 
   cy.on("tap", "node, edge", (evt) => renderProperties(evt.target));
 
+  cy.on("dragfree", "node", () => {
+    const positions = {};
+    cy.nodes().forEach((n) => (positions[n.id()] = [n.position("x"), n.position("y")]));
+    debouncedSaveLayout(positions);
+  });
+
+  window.addEventListener("beforeunload", () => {
+    debouncedSaveGraph.flush();
+    debouncedSaveLayout.flush();
+  });
+
+  document.getElementById("back-to-library").onclick = showLibrary;
+
   await refreshViolations();
+}
+
+async function main() {
+  labelSet = await fetch("/api/labels").then((r) => r.json());
+
+  document.getElementById("new-graph-btn").onclick = async () => {
+    const name = document.getElementById("new-graph-name").value.trim();
+    if (!name) return;
+    await fetch(`/api/graphs/${name}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ vertices: [], edges: [] }),
+    });
+    openEditor(name);
+  };
+
+  await showLibrary();
 }
 
 main();

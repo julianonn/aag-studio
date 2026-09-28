@@ -55,3 +55,33 @@ def test_missing_graph_is_404(client):
 def test_list_graphs(client, tmp_path):
     (tmp_path / "one.json").write_text(json.dumps({"vertices": [], "edges": []}))
     assert client.get("/api/graphs").json() == ["one"]
+
+
+def test_list_graphs_excludes_layout_sidecars(client, tmp_path):
+    (tmp_path / "one.json").write_text(json.dumps({"vertices": [], "edges": []}))
+    (tmp_path / "one.layout.json").write_text("{}")
+    assert client.get("/api/graphs").json() == ["one"]
+
+
+def test_delete_graph_removes_it_and_its_layout(client, tmp_path):
+    (tmp_path / "one.json").write_text(json.dumps({"vertices": [], "edges": []}))
+    (tmp_path / "one.layout.json").write_text("{}")
+    response = client.delete("/api/graphs/one")
+    assert response.status_code == 200
+    assert not (tmp_path / "one.json").exists()
+    assert not (tmp_path / "one.layout.json").exists()
+
+
+def test_delete_missing_graph_is_404(client):
+    assert client.delete("/api/graphs/does_not_exist").status_code == 404
+
+
+def test_missing_layout_returns_empty(client):
+    assert client.get("/api/graphs/no_such_graph/layout").json() == {}
+
+
+def test_save_then_load_layout_round_trips(client):
+    positions = {"usr": [12.5, -3], "iphone": [100, 200]}
+    put_response = client.put("/api/graphs/test_graph/layout", json=positions)
+    assert put_response.status_code == 200
+    assert client.get("/api/graphs/test_graph/layout").json() == positions

@@ -23,6 +23,10 @@ def _graph_path(name: str) -> Path:
     return GRAPHS_DIR / f"{name}.json"
 
 
+def _layout_path(name: str) -> Path:
+    return _graph_path(name).with_suffix("").with_suffix(".layout.json")
+
+
 @app.get("/api/labels")
 def get_labels() -> dict:
     return yaml.safe_load(LABELS_PATH.read_text())
@@ -30,7 +34,7 @@ def get_labels() -> dict:
 
 @app.get("/api/graphs")
 def list_graphs() -> list[str]:
-    return sorted(path.stem for path in GRAPHS_DIR.glob("*.json"))
+    return sorted(path.stem for path in GRAPHS_DIR.glob("*.json") if not path.name.endswith(".layout.json"))
 
 
 @app.get("/api/graphs/{name}")
@@ -47,6 +51,28 @@ def put_graph(name: str, graph: Graph) -> dict:
     if violations:
         raise HTTPException(status_code=400, detail=violations)
     _graph_path(name).write_text(graph.model_dump_json(indent=2))
+    return {}
+
+
+@app.delete("/api/graphs/{name}")
+def delete_graph(name: str) -> dict:
+    path = _graph_path(name)
+    if not path.exists():
+        raise HTTPException(status_code=404, detail=f"no such graph: {name}")
+    path.unlink()
+    _layout_path(name).unlink(missing_ok=True)
+    return {}
+
+
+@app.get("/api/graphs/{name}/layout")
+def get_layout(name: str) -> dict:
+    path = _layout_path(name)
+    return json.loads(path.read_text()) if path.exists() else {}
+
+
+@app.put("/api/graphs/{name}/layout")
+def put_layout(name: str, positions: dict[str, tuple[float, float]]) -> dict:
+    _layout_path(name).write_text(json.dumps(positions, indent=2))
     return {}
 
 

@@ -5,21 +5,42 @@
   <title>aag-studio</title>
   <style>
     html, body { margin: 0; height: 100%; font-family: sans-serif; }
-    body { display: grid; grid-template-columns: 200px 1fr 260px; }
+    #library { padding: 16px; max-width: 500px; }
+    #graph-list { list-style: none; padding: 0; }
+    #graph-list li { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; }
+    #editor { display: grid; grid-template-columns: 200px 1fr 260px; grid-template-rows: auto 1fr; height: 100%; }
+    #toolbar { grid-column: 1 / -1; padding: 6px; border-bottom: 1px solid #ccc; }
     #palette, #sidebar { padding: 8px; overflow: auto; }
     #graph { height: 100%; }
     #properties { min-height: 4em; border-bottom: 1px solid #ccc; padding-bottom: 8px; margin-bottom: 8px; }
     #violations { list-style: none; padding: 0; color: #b00; font-size: 12px; }
-    button { display: block; width: 100%; text-align: left; margin: 2px 0; }
+    button { text-align: left; margin: 2px 0; }
+    #palette button { display: block; width: 100%; }
+    #connect-toggle.active { background: #cde; }
+    [hidden] { display: none !important; }
   </style>
 </head>
 <body>
-  <div id="palette"></div>
-  <div id="graph"></div>
-  <div id="sidebar">
-    <div id="properties"></div>
-    <ul id="violations"></ul>
+  <div id="library">
+    <h2>Graphs</h2>
+    <ul id="graph-list"></ul>
+    <input id="new-graph-name" placeholder="new graph name">
+    <button id="new-graph-btn">New graph</button>
   </div>
+
+  <div id="editor" hidden>
+    <div id="toolbar">
+      <button id="back-to-library">← Library</button>
+      <button id="connect-toggle">Connect</button>
+    </div>
+    <div id="palette"></div>
+    <div id="graph"></div>
+    <div id="sidebar">
+      <div id="properties"></div>
+      <ul id="violations"></ul>
+    </div>
+  </div>
+
   <script src="/vendor/lodash.min.js"></script>
   <script src="/vendor/cytoscape.min.js"></script>
   <script src="/vendor/cytoscape-edgehandles.min.js"></script>
