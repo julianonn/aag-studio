@@ -6,6 +6,7 @@ import { renderPalette } from "./palette.js";
 import { showContextMenu } from "./contextmenu.js";
 import { attachSelectionHandles } from "./selection-handles.js";
 import { topLevelKind, inferredEdgeLabel, nextId, validateGraph, debounce } from "./graph-utils.js";
+import { icon } from "./icons.js";
 
 const rootStyle = getComputedStyle(document.documentElement);
 const KIND_COLOR = {
@@ -175,6 +176,29 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
     await applyGraph({ vertices: graph.vertices, edges: graph.edges.filter((e) => e.id !== edgeId) });
   }
 
+  async function tryRenameVertex(oldId, newId) {
+    if (!newId || newId === oldId) return;
+    if (graph.vertices.some((v) => v.id === newId)) {
+      alert(`a vertex named "${newId}" already exists`);
+      return;
+    }
+    await applyGraph({
+      vertices: graph.vertices.map((v) => (v.id === oldId ? { ...v, id: newId } : v)),
+      edges: graph.edges.map((e) => ({
+        ...e,
+        src: e.src === oldId ? newId : e.src,
+        tgt: e.tgt === oldId ? newId : e.tgt,
+      })),
+    });
+  }
+
+  async function tryChangeVertexCategory(vertexId, newLabel) {
+    await applyGraph({
+      vertices: graph.vertices.map((v) => (v.id === vertexId ? { ...v, label: newLabel } : v)),
+      edges: graph.edges,
+    });
+  }
+
   async function tryReconnectEdge(edgeId, movingEnd, droppedNodeId) {
     const edge = graph.edges.find((e) => e.id === edgeId);
     const updated = movingEnd === "src" ? { ...edge, src: droppedNodeId } : { ...edge, tgt: droppedNodeId };
@@ -211,19 +235,27 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
     issues: document.getElementById("icon-issues"),
     info: document.getElementById("icon-info"),
   };
+  const panelTitleEl = document.getElementById("panel-title");
+  const PANEL_TITLES = { add: "Add vertex", issues: "Issues", info: "Graph info" };
   let openPanel = null;
+
+  function closePanel() {
+    if (!openPanel) return;
+    icons[openPanel].classList.remove("active");
+    openPanel = null;
+    sidePanelEl.hidden = true;
+    editorEl.classList.remove("panel-open");
+  }
 
   function togglePanel(name) {
     if (openPanel === name) {
-      openPanel = null;
-      sidePanelEl.hidden = true;
-      editorEl.classList.remove("panel-open");
-      icons[name].classList.remove("active");
+      closePanel();
       return;
     }
     if (openPanel) icons[openPanel].classList.remove("active");
     openPanel = name;
     for (const [key, el] of Object.entries(panels)) el.hidden = key !== name;
+    panelTitleEl.textContent = PANEL_TITLES[name];
     sidePanelEl.hidden = false;
     editorEl.classList.add("panel-open");
     icons[name].classList.add("active");
@@ -232,6 +264,10 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
   icons.add.onclick = () => togglePanel("add");
   icons.issues.onclick = () => togglePanel("issues");
   icons.info.onclick = () => togglePanel("info");
+
+  const panelCollapseButton = document.getElementById("panel-collapse");
+  panelCollapseButton.replaceChildren(icon("chevron-left"));
+  panelCollapseButton.onclick = closePanel;
 
   document.getElementById("graph").addEventListener("contextmenu", (evt) => evt.preventDefault());
 
@@ -287,19 +323,45 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
     propertiesEl.hidden = true;
   }
 
+  const ALL_VERTEX_LABELS = Object.keys(labelSet.vertex_labels).sort();
+
+  function labeledField(labelText, inputEl) {
+    const row = document.createElement("div");
+    row.className = "field-row";
+    const label = document.createElement("label");
+    label.textContent = labelText;
+    row.append(label, inputEl);
+    return row;
+  }
+
   function renderProperties(element) {
     propertiesTarget = element;
     propertiesEl.hidden = false;
     positionPropertiesToolbar(element);
+    propertiesEl.replaceChildren();
 
     if (element.isNode()) {
-      propertiesEl.textContent = `${element.id()} : ${element.data("label")}`;
+      const nameInput = document.createElement("input");
+      nameInput.value = element.id();
+      nameInput.onchange = () => tryRenameVertex(element.id(), nameInput.value.trim());
+
+      const categorySelect = document.createElement("select");
+      for (const label of ALL_VERTEX_LABELS) {
+        const option = document.createElement("option");
+        option.value = label;
+        option.textContent = label;
+        option.selected = label === element.data("label");
+        categorySelect.append(option);
+      }
+      categorySelect.onchange = () => tryChangeVertexCategory(element.id(), categorySelect.value);
+
+      propertiesEl.append(labeledField("Name", nameInput), labeledField("Category", categorySelect));
       return;
     }
+
     const edge = graph.edges.find((e) => e.id === element.id());
-    propertiesEl.replaceChildren();
     const heading = document.createElement("div");
-    heading.textContent = `${edge.id} : ${edge.label}`;
+    heading.textContent = `${edge.label === "ha" ? "has access to" : "gives access to"} (${edge.label})`;
     propertiesEl.append(heading);
 
     const list = document.createElement("ul");
@@ -307,10 +369,11 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
       const li = document.createElement("li");
       const start = document.createElement("input");
       start.value = interval[0] ?? "";
+      start.placeholder = "0";
       const end = document.createElement("input");
       end.value = interval[1] ?? "";
-      end.placeholder = "open";
-      li.append(start, " – ", end);
+      end.placeholder = "open-ended";
+      li.append(labeledField("From", start), labeledField("Until", end));
       list.append(li);
 
       async function commit() {

@@ -3,6 +3,7 @@
 // Editing itself lives in editor.js.
 
 import { openEditor } from "./editor.js";
+import { icon } from "./icons.js";
 
 const libraryEl = document.getElementById("library");
 const editorEl = document.getElementById("editor");
@@ -87,6 +88,11 @@ window.addEventListener("popstate", routeFromLocation);
 
 async function main() {
   labelSet = await fetch("/api/labels").then((r) => r.json());
+
+  document.getElementById("back-to-library").prepend(icon("home"));
+  document.getElementById("icon-add").prepend(icon("plus"));
+  document.getElementById("icon-issues").prepend(icon("alert"));
+  document.getElementById("icon-info").prepend(icon("info"));
 
   document.getElementById("new-graph-btn").onclick = async () => {
     const name = document.getElementById("new-graph-name").value.trim();

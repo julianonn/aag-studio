@@ -7,24 +7,27 @@
 </head>
 <body>
   <div id="library">
-    <h2>Graphs</h2>
+    <h2>aag-studio</h2>
+    <p>A tool for building resource access graphs (RAGs): diagrams of how accounts, devices and credentials give access to each other.</p>
+    <h3>Your graphs</h3>
     <ul id="graph-list"></ul>
-    <input id="new-graph-name" placeholder="new graph name">
-    <button id="new-graph-btn">New graph</button>
+    <input id="new-graph-name" placeholder="name for a new graph">
+    <button id="new-graph-btn">Create and open</button>
   </div>
 
   <div id="editor" hidden>
-    <div id="toolbar">
-      <button id="back-to-library">← Library</button>
-    </div>
-
     <div id="icon-strip">
-      <button id="icon-add" title="Add vertex">+</button>
-      <button id="icon-issues" title="Issues">!<span id="issues-count"></span></button>
-      <button id="icon-info" title="Graph info">i</button>
+      <button id="back-to-library"><span class="icon-label">Home</span></button>
+      <button id="icon-add"><span class="icon-label">Add vertex</span></button>
+      <button id="icon-issues"><span id="issues-count"></span><span class="icon-label">Issues</span></button>
+      <button id="icon-info"><span class="icon-label">Graph info</span></button>
     </div>
 
     <div id="side-panel" hidden>
+      <div id="panel-header">
+        <strong id="panel-title"></strong>
+        <button id="panel-collapse" title="Collapse panel"></button>
+      </div>
       <div id="panel-add" hidden></div>
       <div id="panel-issues" hidden>
         <ul id="violations-list"></ul>
