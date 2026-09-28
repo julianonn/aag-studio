@@ -154,31 +154,6 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
     await applyGraph({ vertices: graph.vertices, edges: graph.edges.filter((e) => e.id !== edgeId) });
   }
 
-  // Reconnecting an end of an existing edge: cytoscape-edgehandles can only
-  // start a drag from a fixed source toward a dropped target, so to let the
-  // *source* end move (target fixed) we start the drag from the target and
-  // swap direction on completion.
-  let reconnecting = null; // { edgeId, movingEnd: "src" | "tgt" }
-
-  async function tryReconnectEdge(edgeId, movingEnd, droppedNodeId) {
-    const edge = graph.edges.find((e) => e.id === edgeId);
-    const updated = movingEnd === "src" ? { ...edge, src: droppedNodeId } : { ...edge, tgt: droppedNodeId };
-    const newLabel = inferredEdgeLabel(
-      labelSet,
-      graph.vertices.find((v) => v.id === updated.src).label,
-      graph.vertices.find((v) => v.id === updated.tgt).label
-    );
-    if (!newLabel) {
-      alert("no edge rule matches that reconnection");
-      return;
-    }
-    updated.label = newLabel;
-    await applyGraph({
-      vertices: graph.vertices,
-      edges: graph.edges.map((e) => (e.id === edgeId ? updated : e)),
-    });
-  }
-
   renderPalette(document.getElementById("palette"), labelSet.vertex_labels, tryAddVertex);
 
   document.getElementById("graph").addEventListener("contextmenu", (evt) => evt.preventDefault());
@@ -233,6 +208,81 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
     if (hoveredNode) eh.start(hoveredNode);
   });
 
+  // Selecting an edge shows a drag handle at each end; dragging one to a
+  // different node reconnects that end. edgehandles can only start a drag
+  // from a fixed anchor toward a dropped target, so to move the *source*
+  // end (target fixed) we anchor on the target and swap direction on completion.
+  let reconnecting = null; // { edgeId, movingEnd: "src" | "tgt" }
+  const sourceHandleEl = document.createElement("div");
+  sourceHandleEl.className = "edge-handle";
+  sourceHandleEl.hidden = true;
+  const targetHandleEl = document.createElement("div");
+  targetHandleEl.className = "edge-handle";
+  targetHandleEl.hidden = true;
+  document.getElementById("graph").append(sourceHandleEl, targetHandleEl);
+
+  let selectedEdge = null;
+
+  function positionReconnectHandles(edge) {
+    const srcPos = cy.getElementById(edge.data("source")).renderedPosition();
+    const tgtPos = cy.getElementById(edge.data("target")).renderedPosition();
+    sourceHandleEl.style.left = `${srcPos.x}px`;
+    sourceHandleEl.style.top = `${srcPos.y}px`;
+    targetHandleEl.style.left = `${tgtPos.x}px`;
+    targetHandleEl.style.top = `${tgtPos.y}px`;
+  }
+
+  cy.on("select", "edge", (evt) => {
+    selectedEdge = evt.target;
+    positionReconnectHandles(selectedEdge);
+    sourceHandleEl.hidden = false;
+    targetHandleEl.hidden = false;
+  });
+  cy.on("unselect", "edge", () => {
+    selectedEdge = null;
+    sourceHandleEl.hidden = true;
+    targetHandleEl.hidden = true;
+  });
+  cy.on("pan zoom position", () => {
+    if (selectedEdge) positionReconnectHandles(selectedEdge);
+  });
+
+  sourceHandleEl.addEventListener("mousedown", (evt) => {
+    evt.preventDefault();
+    if (!selectedEdge) return;
+    reconnecting = { edgeId: selectedEdge.id(), movingEnd: "src" };
+    sourceHandleEl.hidden = true;
+    targetHandleEl.hidden = true;
+    eh.start(cy.getElementById(selectedEdge.data("target")));
+  });
+  targetHandleEl.addEventListener("mousedown", (evt) => {
+    evt.preventDefault();
+    if (!selectedEdge) return;
+    reconnecting = { edgeId: selectedEdge.id(), movingEnd: "tgt" };
+    sourceHandleEl.hidden = true;
+    targetHandleEl.hidden = true;
+    eh.start(cy.getElementById(selectedEdge.data("source")));
+  });
+
+  async function tryReconnectEdge(edgeId, movingEnd, droppedNodeId) {
+    const edge = graph.edges.find((e) => e.id === edgeId);
+    const updated = movingEnd === "src" ? { ...edge, src: droppedNodeId } : { ...edge, tgt: droppedNodeId };
+    const newLabel = inferredEdgeLabel(
+      labelSet,
+      graph.vertices.find((v) => v.id === updated.src).label,
+      graph.vertices.find((v) => v.id === updated.tgt).label
+    );
+    if (!newLabel) {
+      alert("no edge rule matches that reconnection");
+      return;
+    }
+    updated.label = newLabel;
+    await applyGraph({
+      vertices: graph.vertices,
+      edges: graph.edges.map((e) => (e.id === edgeId ? updated : e)),
+    });
+  }
+
   cy.on("cxttap", "node", (evt) => {
     const node = evt.target;
     showContextMenu(evt.originalEvent.clientX, evt.originalEvent.clientY, [
@@ -242,24 +292,8 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
 
   cy.on("cxttap", "edge", (evt) => {
     const edge = evt.target;
-    const sourceNode = cy.getElementById(edge.data("source"));
-    const targetNode = cy.getElementById(edge.data("target"));
     showContextMenu(evt.originalEvent.clientX, evt.originalEvent.clientY, [
       { label: "Delete", onClick: () => tryDeleteEdge(edge.id()) },
-      {
-        label: "Reconnect source",
-        onClick: () => {
-          reconnecting = { edgeId: edge.id(), movingEnd: "src" };
-          eh.start(targetNode);
-        },
-      },
-      {
-        label: "Reconnect target",
-        onClick: () => {
-          reconnecting = { edgeId: edge.id(), movingEnd: "tgt" };
-          eh.start(sourceNode);
-        },
-      },
       { label: "Straight", onClick: () => setEdgeStyle(edge.id(), "straight") },
       { label: "Elbow", onClick: () => setEdgeStyle(edge.id(), "taxi") },
       { label: "Curved", onClick: () => setEdgeStyle(edge.id(), "bezier") },
