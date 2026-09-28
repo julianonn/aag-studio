@@ -1,0 +1,13 @@
+{
+  "vertices": [
+    {"id": "usr", "label": "user"},
+    {"id": "iphone", "label": "device"},
+    {"id": "apple_password", "label": "password"},
+    {"id": "a1", "label": "A"}
+  ],
+  "edges": [
+    {"id": "e1", "src": "usr", "tgt": "iphone", "label": "ha", "time": [[0, null]]},
+    {"id": "e2", "src": "apple_password", "tgt": "a1", "label": "ga", "time": [[0, null]]},
+    {"id": "e3", "src": "a1", "tgt": "iphone", "label": "ga", "time": [[0, null]]}
+  ]
+}

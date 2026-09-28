@@ -1,0 +1,37 @@
+# Each label maps to the label(s) it's a special case of (its parents).
+# E.g. password: [credential] means "password is a specific kind of credential."
+# A label with no parents ([]) is a root.
+vertex_labels:
+  resource: []
+  agent: []
+  A: []
+  credential: [resource]
+  password: [credential]
+  pin: [credential]
+  biometric: [credential]
+  auth_token: [credential]
+  account: [resource]
+  google: [account]
+  apple: [account]
+  device: [resource]
+  user: [agent]
+  adversary: [agent]
+
+edge_labels:
+  ha: []
+  ga: []
+
+# ha edges = "has a" relationship; connects an agent to a resource
+# ga edges = "goes after" relationship; connects a resource to an "access method" (A) or vice versa
+# people HAVE access to things
+# things GIVE access to other things
+edge_rules:
+  - source: agent
+    target: resource
+    label: ha
+  - source: resource
+    target: A
+    label: ga
+  - source: A
+    target: resource
+    label: ga
