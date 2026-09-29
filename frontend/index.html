@@ -3,10 +3,11 @@
 <head>
   <meta charset="utf-8">
   <title>aag-studio</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@mdi/font@7.4.47/css/materialdesignicons.min.css">
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
-  <div id="library">
+  <div id="home">
     <h2>aag-studio</h2>
     <p>A tool for building resource access graphs (RAGs): diagrams of how accounts, devices and credentials give access to each other.</p>
     <h3>Your graphs</h3>
@@ -16,30 +17,86 @@
   </div>
 
   <div id="editor" hidden>
-    <div id="icon-strip">
-      <button id="back-to-library"><span class="icon-label">Home</span></button>
-      <button id="icon-add"><span class="icon-label">Add vertex</span></button>
-      <button id="icon-issues"><span id="issues-count"></span><span class="icon-label">Issues</span></button>
-      <button id="icon-info"><span class="icon-label">Graph info</span></button>
+    <div id="top-left-bar" class="floating-island">
+      <button id="btn-hamburger" title="Menu"><i class="mdi mdi-menu"></i></button>
+      <span id="graph-name"></span>
     </div>
 
-    <div id="side-panel" hidden>
-      <div id="panel-header">
-        <strong id="panel-title"></strong>
-        <button id="panel-collapse" title="Collapse panel"></button>
+    <div id="hamburger-menu" class="floating-menu" hidden>
+      <button id="menu-home"><i class="mdi mdi-home"></i> Home</button>
+      <button id="menu-rename"><i class="mdi mdi-pencil-outline"></i> Rename graph</button>
+      <button id="menu-issues"><i class="mdi mdi-alert-circle-outline"></i> Issues <span id="issues-count"></span></button>
+      <div id="menu-meta" class="menu-footer"></div>
+    </div>
+
+    <div id="tool-island" class="floating-island">
+      <button id="tool-pan" class="active" title="Pan (H or hold Space)"><i class="mdi mdi-hand-back-right"></i></button>
+      <button id="tool-select" title="Select (V)"><i class="mdi mdi-cursor-default"></i></button>
+      <span class="island-divider"></span>
+      <button id="tool-add-vertex" title="Add vertex"><i class="mdi mdi-plus-box-outline"></i> Add vertex</button>
+      <button id="tool-add-edge" title="Add edge"><i class="mdi mdi-vector-line"></i> Add edge</button>
+    </div>
+
+    <div id="top-right-island" class="floating-island">
+      <button id="btn-undo" title="Undo (Cmd+Z)"><i class="mdi mdi-undo"></i></button>
+      <button id="btn-redo" title="Redo (Cmd+Y)"><i class="mdi mdi-redo"></i></button>
+      <span class="island-divider"></span>
+      <button id="btn-zoom-out" title="Zoom out"><i class="mdi mdi-minus"></i></button>
+      <button id="btn-zoom-reset" title="Reset zoom">100%</button>
+      <button id="btn-zoom-in" title="Zoom in"><i class="mdi mdi-plus"></i></button>
+    </div>
+
+    <div id="palette-island" class="floating-island left-island" hidden>
+      <div class="island-header">
+        <strong>Add vertex</strong>
+        <button id="palette-close"><i class="mdi mdi-close"></i></button>
       </div>
-      <div id="panel-add" hidden></div>
-      <div id="panel-issues" hidden>
-        <ul id="violations-list"></ul>
+      <div id="palette-tree"></div>
+    </div>
+
+    <div id="edge-island" class="floating-island left-island" hidden>
+      <div class="island-header">
+        <strong>Add edge</strong>
+        <button id="edge-close"><i class="mdi mdi-close"></i></button>
       </div>
-      <div id="panel-info" hidden>
-        <div><strong id="graph-name"></strong></div>
-        <button id="rename-graph">rename</button>
-        <div id="graph-meta"></div>
+      <div class="island-body">
+        <p id="edge-instruction" class="island-instruction">Click a source node, then click a target node to connect.</p>
+        <div class="island-section-title">Allowed connections</div>
+        <ul class="island-rule-list">
+          <li><code>agent</code> &rarr; <code>resource</code> (ha: has access)</li>
+          <li><code>resource</code> &rarr; <code>A</code> (ga: gives access)</li>
+          <li><code>A</code> &rarr; <code>resource</code> (ga: gives access)</li>
+        </ul>
+        <div class="island-section-title">Edge curve style</div>
+        <div class="edge-style-picker">
+          <button id="style-bezier" class="style-opt active" type="button">Curved</button>
+          <button id="style-taxi" class="style-opt" type="button">Elbow</button>
+          <button id="style-straight" class="style-opt" type="button">Straight</button>
+        </div>
       </div>
+    </div>
+
+    <div id="issues-dialog" class="floating-island right-dialog" hidden>
+      <div class="island-header">
+        <strong>Issues</strong>
+        <button id="issues-close"><i class="mdi mdi-close"></i></button>
+      </div>
+      <ul id="violations-list"></ul>
     </div>
 
     <div id="graph"></div>
+  </div>
+
+  <div id="modal-backdrop" class="modal-backdrop" hidden>
+    <div id="modal-box" class="modal-box">
+      <div id="modal-title" class="modal-title"></div>
+      <div id="modal-message" class="modal-message"></div>
+      <input id="modal-input" class="modal-input" hidden>
+      <div class="modal-actions">
+        <button id="modal-cancel-btn" class="modal-btn secondary">Cancel</button>
+        <button id="modal-confirm-btn" class="modal-btn primary">OK</button>
+      </div>
+    </div>
   </div>
 
   <script src="/vendor/lodash.min.js"></script>

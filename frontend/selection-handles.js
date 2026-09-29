@@ -1,4 +1,4 @@
-import { MIN_NODE_SIZE } from "./constants.js";
+import { MIN_NODE_SIZE, CONNECT_HANDLE_OFFSET } from "./constants.js";
 
 function screenToModel(cy, containerEl, clientX, clientY) {
   const rect = containerEl.getBoundingClientRect();
@@ -54,12 +54,12 @@ export function attachSelectionHandles(cy, eh, containerEl, { onConnect, onRecon
   function positionConnectHandles(node) {
     const box = node.renderedBoundingBox();
     connectHandles.top.style.left = `${(box.x1 + box.x2) / 2}px`;
-    connectHandles.top.style.top = `${box.y1}px`;
-    connectHandles.right.style.left = `${box.x2}px`;
+    connectHandles.top.style.top = `${box.y1 - CONNECT_HANDLE_OFFSET}px`;
+    connectHandles.right.style.left = `${box.x2 + CONNECT_HANDLE_OFFSET}px`;
     connectHandles.right.style.top = `${(box.y1 + box.y2) / 2}px`;
     connectHandles.bottom.style.left = `${(box.x1 + box.x2) / 2}px`;
-    connectHandles.bottom.style.top = `${box.y2}px`;
-    connectHandles.left.style.left = `${box.x1}px`;
+    connectHandles.bottom.style.top = `${box.y2 + CONNECT_HANDLE_OFFSET}px`;
+    connectHandles.left.style.left = `${box.x1 - CONNECT_HANDLE_OFFSET}px`;
     connectHandles.left.style.top = `${(box.y1 + box.y2) / 2}px`;
   }
 
@@ -110,18 +110,25 @@ export function attachSelectionHandles(cy, eh, containerEl, { onConnect, onRecon
     targetHandle.style.top = `${tgtEndpoint.y}px`;
   }
 
-  cy.on("select", "edge", (evt) => {
-    selectedEdge = evt.target;
-    positionReconnectHandles(selectedEdge);
-    sourceHandle.hidden = false;
-    targetHandle.hidden = false;
-  });
-  cy.on("unselect", "edge", () => {
-    selectedEdge = null;
-    sourceHandle.hidden = true;
-    targetHandle.hidden = true;
-  });
+  function updateReconnectHandles() {
+    const selectedEdges = cy.edges(":selected");
+    if (selectedEdges.length === 1) {
+      selectedEdge = selectedEdges[0];
+      positionReconnectHandles(selectedEdge);
+      sourceHandle.hidden = false;
+      targetHandle.hidden = false;
+    } else {
+      selectedEdge = null;
+      sourceHandle.hidden = true;
+      targetHandle.hidden = true;
+    }
+  }
+
+  cy.on("select unselect", "edge", updateReconnectHandles);
   cy.on("pan zoom position", () => {
+    if (selectedEdge) positionReconnectHandles(selectedEdge);
+  });
+  window.addEventListener("resize", () => {
     if (selectedEdge) positionReconnectHandles(selectedEdge);
   });
 
@@ -170,16 +177,23 @@ export function attachSelectionHandles(cy, eh, containerEl, { onConnect, onRecon
     for (const el of Object.values(resizeHandles)) el.hidden = true;
   }
 
-  cy.on("select", "node", (evt) => {
-    selectedNode = evt.target;
-    positionResizeHandles(selectedNode);
-    showResizeHandles();
+  function updateResizeHandles() {
+    const selectedNodes = cy.nodes(":selected");
+    if (selectedNodes.length === 1) {
+      selectedNode = selectedNodes[0];
+      positionResizeHandles(selectedNode);
+      showResizeHandles();
+    } else {
+      selectedNode = null;
+      hideResizeHandles();
+    }
+  }
+
+  cy.on("select unselect", "node", updateResizeHandles);
+  cy.on("pan zoom position data", () => {
+    if (selectedNode) positionResizeHandles(selectedNode);
   });
-  cy.on("unselect", "node", () => {
-    selectedNode = null;
-    hideResizeHandles();
-  });
-  cy.on("pan zoom position", () => {
+  window.addEventListener("resize", () => {
     if (selectedNode) positionResizeHandles(selectedNode);
   });
 

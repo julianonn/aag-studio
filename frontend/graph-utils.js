@@ -1,4 +1,4 @@
-// Shared helpers between the library screen and the editor.
+// Shared helpers between the home screen and the editor.
 
 export function topLevelKind(label, vertexParents) {
   const parents = vertexParents[label] ?? [];

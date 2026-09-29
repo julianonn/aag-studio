@@ -85,10 +85,18 @@ def put_graph(name: str, graph: Graph) -> dict:
         raise HTTPException(status_code=400, detail=violations)
     is_new = not _graph_path(name).exists()
     _graph_path(name).write_text(graph.model_dump_json(indent=2))
+    layout = _read_layout(name)
     if is_new:
-        layout = _read_layout(name)
         layout.setdefault("created", time.time())
-        _write_layout(name, layout)
+    valid_vertex_ids = {vertex.id for vertex in graph.vertices}
+    valid_edge_ids = {edge.id for edge in graph.edges}
+    if "positions" in layout:
+        layout["positions"] = {k: v for k, v in layout["positions"].items() if k in valid_vertex_ids}
+    if "sizes" in layout:
+        layout["sizes"] = {k: v for k, v in layout["sizes"].items() if k in valid_vertex_ids}
+    if "edge_styles" in layout:
+        layout["edge_styles"] = {k: v for k, v in layout["edge_styles"].items() if k in valid_edge_ids}
+    _write_layout(name, layout)
     return {}
 
 
@@ -131,6 +139,17 @@ def get_layout(name: str) -> dict:
 def put_layout(name: str, layout: dict) -> dict:
     existing = _read_layout(name)
     existing.update(layout)
+    graph_path = _graph_path(name)
+    if graph_path.exists():
+        graph_data = json.loads(graph_path.read_text())
+        valid_vertex_ids = {vertex["id"] for vertex in graph_data.get("vertices", [])}
+        valid_edge_ids = {edge["id"] for edge in graph_data.get("edges", [])}
+        if "positions" in existing:
+            existing["positions"] = {k: v for k, v in existing["positions"].items() if k in valid_vertex_ids}
+        if "sizes" in existing:
+            existing["sizes"] = {k: v for k, v in existing["sizes"].items() if k in valid_vertex_ids}
+        if "edge_styles" in existing:
+            existing["edge_styles"] = {k: v for k, v in existing["edge_styles"].items() if k in valid_edge_ids}
     _write_layout(name, existing)
     return {}
 
