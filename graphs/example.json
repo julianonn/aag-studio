@@ -14,7 +14,7 @@
     },
     {
       "id": "am_unlock",
-      "label": "A"
+      "label": "primary"
     },
     {
       "id": "apple_password",
@@ -26,7 +26,7 @@
     },
     {
       "id": "am_apple",
-      "label": "A"
+      "label": "primary"
     }
   ],
   "edges": [
@@ -99,6 +99,18 @@
         [
           0,
           null
+        ]
+      ]
+    },
+    {
+      "id": "e_1",
+      "src": "am_unlock",
+      "tgt": "***@icloud.com",
+      "label": "ga",
+      "time": [
+        [
+          "inf",
+          "inf"
         ]
       ]
     }

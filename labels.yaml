@@ -6,6 +6,9 @@ vertex_labels:
   agent: []
   A: []
 
+  primary: [A]
+  fallback: [A]
+
   credential: [resource]
   phone_number: [resource]
   password: [credential]

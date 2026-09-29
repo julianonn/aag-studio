@@ -565,10 +565,27 @@ export class CanvasSvg {
         text.setAttribute("text-anchor", "middle");
         text.setAttribute("dominant-baseline", "central");
         text.setAttribute("fill", "#fff");
-        text.setAttribute("font-size", "11");
-        text.setAttribute("font-weight", "600");
         text.setAttribute("pointer-events", "none");
-        text.textContent = "A";
+
+        const sub = vertex.label === "fallback" ? "f" : vertex.label === "primary" ? "p" : (vertex.label !== "A" ? vertex.label[0] : "");
+        if (sub) {
+          const tspanA = document.createElementNS("http://www.w3.org/2000/svg", "tspan");
+          tspanA.setAttribute("font-size", "11");
+          tspanA.setAttribute("font-weight", "600");
+          tspanA.textContent = "A";
+
+          const tspanSub = document.createElementNS("http://www.w3.org/2000/svg", "tspan");
+          tspanSub.setAttribute("font-size", "8");
+          tspanSub.setAttribute("font-weight", "600");
+          tspanSub.setAttribute("dy", "3");
+          tspanSub.textContent = sub;
+
+          text.append(tspanA, tspanSub);
+        } else {
+          text.setAttribute("font-size", "11");
+          text.setAttribute("font-weight", "600");
+          text.textContent = "A";
+        }
         g.append(text);
       } else {
         const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
@@ -858,6 +875,14 @@ export class CanvasSvg {
     const canvasPt = this.screenToCanvas(evt.clientX, evt.clientY);
 
     if (this.mode === "edge" && !this.spacePressed) {
+      const clickedEdgeEl = evt.target.closest(".svg-edge");
+      if (clickedEdgeEl) {
+        evt.preventDefault();
+        evt.stopPropagation();
+        const edgeId = clickedEdgeEl.dataset.id;
+        this.select(edgeId, "edge");
+        return;
+      }
       const node = this.findNodeAt(canvasPt.x, canvasPt.y, 20);
       if (!node) return;
       evt.preventDefault();

@@ -201,12 +201,17 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
 
   const canvas = new CanvasSvg(document.getElementById("canvas-svg"), {
     onSelectionChange: (selection) => {
+      if (selection.edges.length === 1 && selection.nodes.length === 0) {
+        if (activeMode === "edge") {
+          setMode(previousMode || "pan");
+        }
+        activeSelectedItem = { type: "edge", id: selection.edges[0] };
+        renderSelectedItemIsland();
+        return;
+      }
       if (activeMode === "edge") return;
       if (selection.nodes.length === 1 && selection.edges.length === 0) {
         activeSelectedItem = { type: "node", id: selection.nodes[0] };
-        renderSelectedItemIsland();
-      } else if (selection.edges.length === 1 && selection.nodes.length === 0) {
-        activeSelectedItem = { type: "edge", id: selection.edges[0] };
         renderSelectedItemIsland();
       } else {
         if (currentIslandMode === "node" || currentIslandMode === "edge") {
@@ -597,6 +602,13 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
     }
   }
 
+  function createSectionTitle(text) {
+    const title = document.createElement("div");
+    title.className = "island-section-title";
+    title.textContent = text;
+    return title;
+  }
+
   function openAddVertexIsland() {
     canvas.clearSelection();
     activeSelectedItem = null;
@@ -615,7 +627,9 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
     nameInput.onchange = () => {
       addVertexNameVal = nameInput.value.trim();
     };
-    const nameRow = labeledField("Name", nameInput);
+    const idRow = labeledField("ID", nameInput);
+
+    const labelTitle = createSectionTitle("Label");
 
     const container = document.createElement("div");
     container.id = "palette-tree";
@@ -625,7 +639,7 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
       nameInput.value = addVertexNameVal;
     });
 
-    leftIslandBody.replaceChildren(nameRow, container);
+    leftIslandBody.replaceChildren(idRow, labelTitle, container);
     leftIsland.hidden = false;
   }
 
@@ -636,37 +650,9 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
     nameInput.onchange = () => {
       addEdgeNameVal = nameInput.value.trim();
     };
-    const nameRow = labeledField("Name", nameInput);
+    const idRow = labeledField("ID", nameInput);
 
-    const styleTitle = document.createElement("div");
-    styleTitle.className = "island-section-title";
-    styleTitle.textContent = "Style";
-
-    const styleGroup = document.createElement("div");
-    styleGroup.className = "island-btn-group";
-    const styles = [
-      { id: "bezier", title: "Curved", icon: "mdi-vector-curve" },
-      { id: "taxi", title: "Elbow", icon: "mdi-vector-polyline" },
-      { id: "straight", title: "Straight", icon: "mdi-vector-line" },
-    ];
-    for (const s of styles) {
-      const btn = document.createElement("button");
-      btn.className = `island-group-btn ${selectedEdgeStyle === s.id ? "active" : ""}`;
-      btn.type = "button";
-      btn.title = s.title;
-      btn.innerHTML = `<i class="mdi ${s.icon}"></i>`;
-      btn.onclick = () => {
-        selectedEdgeStyle = s.id;
-        for (const child of styleGroup.children) child.classList.remove("active");
-        btn.classList.add("active");
-        canvas.setActiveEdgeStyle(s.id);
-      };
-      styleGroup.append(btn);
-    }
-
-    const typeTitle = document.createElement("div");
-    typeTitle.className = "island-section-title";
-    typeTitle.textContent = "Type";
+    const typeTitle = createSectionTitle("Label");
 
     const typeGroup = document.createElement("div");
     typeGroup.className = "island-btn-group";
@@ -711,7 +697,33 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
 
     timeRow.append(fromInput, toSpan, untilInput);
 
-    return [nameRow, styleTitle, styleGroup, typeTitle, typeGroup, timeTitle, timeRow];
+    const styleTitle = document.createElement("div");
+    styleTitle.className = "island-section-title";
+    styleTitle.textContent = "Style";
+
+    const styleGroup = document.createElement("div");
+    styleGroup.className = "island-btn-group";
+    const styles = [
+      { id: "bezier", title: "Curved", icon: "mdi-vector-curve" },
+      { id: "taxi", title: "Elbow", icon: "mdi-vector-polyline" },
+      { id: "straight", title: "Straight", icon: "mdi-vector-line" },
+    ];
+    for (const s of styles) {
+      const btn = document.createElement("button");
+      btn.className = `island-group-btn ${selectedEdgeStyle === s.id ? "active" : ""}`;
+      btn.type = "button";
+      btn.title = s.title;
+      btn.innerHTML = `<i class="mdi ${s.icon}"></i>`;
+      btn.onclick = () => {
+        selectedEdgeStyle = s.id;
+        for (const child of styleGroup.children) child.classList.remove("active");
+        btn.classList.add("active");
+        canvas.setActiveEdgeStyle(s.id);
+      };
+      styleGroup.append(btn);
+    }
+
+    return [idRow, typeTitle, typeGroup, timeTitle, timeRow, styleTitle, styleGroup];
   }
 
   function openAddEdgeIsland() {
@@ -817,10 +829,12 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
   }
 
   function renderNodeFields(vertex) {
-    const nameInput = document.createElement("input");
-    nameInput.value = vertex.id;
-    nameInput.onchange = () => tryRenameVertex(vertex.id, nameInput.value.trim());
-    const nameRow = labeledField("Name", nameInput);
+    const idInput = document.createElement("input");
+    idInput.value = vertex.id;
+    idInput.onchange = () => tryRenameVertex(vertex.id, idInput.value.trim());
+    const idRow = labeledField("ID", idInput);
+
+    const labelTitle = createSectionTitle("Label");
 
     const paletteTree = document.createElement("div");
     paletteTree.id = "palette-tree";
@@ -834,50 +848,27 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
     const separator = document.createElement("div");
     separator.className = "island-separator";
 
-    const labelSelect = document.createElement("select");
-    populateUniformLabelSelect(labelSelect, labelSet.vertex_labels, vertex.label);
-    labelSelect.onchange = () => tryChangeVertexLabel(vertex.id, labelSelect.value);
-    const labelRow = labeledField("Label", labelSelect);
-
     const actionsRow = createItemActionsRow(
       () => tryDuplicateVertex(vertex.id),
       () => tryDeleteVertex(vertex.id)
     );
 
-    return [nameRow, paletteTree, separator, labelRow, actionsRow];
+    return [idRow, labelTitle, paletteTree, separator, actionsRow];
   }
 
   function renderEdgeFields(edge) {
-    const nameInput = document.createElement("input");
-    nameInput.value = edge.id;
-    nameInput.onchange = () => tryRenameEdge(edge.id, nameInput.value.trim());
-    const nameRow = labeledField("Name", nameInput);
+    const idInput = document.createElement("input");
+    idInput.value = edge.id;
+    idInput.onchange = () => tryRenameEdge(edge.id, idInput.value.trim());
+    const idRow = labeledField("ID", idInput);
 
-    const currentStyle = edgeStyles[edge.id] ?? "bezier";
-    const styleTitle = document.createElement("div");
-    styleTitle.className = "island-section-title";
-    styleTitle.textContent = "Style";
+    const endpointsTitle = createSectionTitle("Endpoints");
+    const endpointsVal = document.createElement("div");
+    endpointsVal.className = "island-endpoints-row";
+    endpointsVal.innerHTML = `<span class="island-endpoint-node">${edge.src}</span><i class="mdi mdi-arrow-right island-endpoint-arrow"></i><span class="island-endpoint-node">${edge.tgt}</span>`;
+    // endpointsVal.innerHTML = `<span class="island-endpoint-node">${edge.src}</span><i class="mdi mdi-arrow-right island-endpoint-arrow"></i><span class="island-endpoint-node">${edge.tgt}</span>`;
 
-    const styleGroup = document.createElement("div");
-    styleGroup.className = "island-btn-group";
-    const styles = [
-      { id: "bezier", title: "Curved", icon: "mdi-vector-curve" },
-      { id: "taxi", title: "Elbow", icon: "mdi-vector-polyline" },
-      { id: "straight", title: "Straight", icon: "mdi-vector-line" },
-    ];
-    for (const s of styles) {
-      const btn = document.createElement("button");
-      btn.className = `island-group-btn ${currentStyle === s.id ? "active" : ""}`;
-      btn.type = "button";
-      btn.title = s.title;
-      btn.innerHTML = `<i class="mdi ${s.icon}"></i>`;
-      btn.onclick = () => setEdgeStyle(edge.id, s.id);
-      styleGroup.append(btn);
-    }
-
-    const typeTitle = document.createElement("div");
-    typeTitle.className = "island-section-title";
-    typeTitle.textContent = "Type";
+    const typeTitle = createSectionTitle("Label");
 
     const typeGroup = document.createElement("div");
     typeGroup.className = "island-btn-group";
@@ -941,23 +932,29 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
       return row;
     });
 
-    const separator = document.createElement("div");
-    separator.className = "island-separator";
+    const currentStyle = edgeStyles[edge.id] ?? "bezier";
+    const styleTitle = document.createElement("div");
+    styleTitle.className = "island-section-title";
+    styleTitle.textContent = "Style";
 
-    const endpointsTitle = document.createElement("div");
-    endpointsTitle.className = "island-section-title";
-    endpointsTitle.textContent = "Endpoints";
+    const styleGroup = document.createElement("div");
+    styleGroup.className = "island-btn-group";
+    const styles = [
+      { id: "bezier", title: "Curved", icon: "mdi-vector-curve" },
+      { id: "taxi", title: "Elbow", icon: "mdi-vector-polyline" },
+      { id: "straight", title: "Straight", icon: "mdi-vector-line" },
+    ];
+    for (const s of styles) {
+      const btn = document.createElement("button");
+      btn.className = `island-group-btn ${currentStyle === s.id ? "active" : ""}`;
+      btn.type = "button";
+      btn.title = s.title;
+      btn.innerHTML = `<i class="mdi ${s.icon}"></i>`;
+      btn.onclick = () => setEdgeStyle(edge.id, s.id);
+      styleGroup.append(btn);
+    }
 
-    const customEp = edgeEndpoints[edge.id];
-    const srcRow = document.createElement("div");
-    srcRow.className = "island-meta-row";
-    srcRow.innerHTML = `<span>From: <strong>${edge.src}</strong></span><span>${customEp?.src ? "custom" : "auto"}</span>`;
-
-    const tgtRow = document.createElement("div");
-    tgtRow.className = "island-meta-row";
-    tgtRow.innerHTML = `<span>To: <strong>${edge.tgt}</strong></span><span>${customEp?.tgt ? "custom" : "auto"}</span>`;
-
-    const additions = [separator, endpointsTitle, srcRow, tgtRow];
+    const bottomItems = [];
 
     if (currentStyle === "taxi") {
       const elbowTitle = document.createElement("div");
@@ -990,16 +987,19 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
         });
         debouncedSaveLayout();
       };
-      additions.push(elbowTitle, labeledField("Pos", elbowInput));
+      bottomItems.push(elbowTitle, labeledField("Pos", elbowInput));
     }
+
+    const separator = document.createElement("div");
+    separator.className = "island-separator";
 
     const actionsRow = createItemActionsRow(
       () => tryDuplicateEdge(edge.id),
       () => tryDeleteEdge(edge.id)
     );
-    additions.push(actionsRow);
+    bottomItems.push(separator, actionsRow);
 
-    return [nameRow, styleTitle, styleGroup, typeTitle, typeGroup, timeTitle, ...timeRows, ...additions];
+    return [idRow, endpointsTitle, endpointsVal, typeTitle, typeGroup, timeTitle, ...timeRows, styleTitle, styleGroup, ...bottomItems];
   }
 
   function renderSelectedItemIsland() {

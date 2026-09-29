@@ -29,7 +29,10 @@
       -1.6666666666666665
     ]
   },
-  "edge_styles": {},
+  "edge_styles": {
+    "e_1": "bezier",
+    "e4": "bezier"
+  },
   "sizes": {},
   "edge_endpoints": {
     "e5": {
@@ -43,7 +46,25 @@
         0,
         1
       ]
+    },
+    "e4": {
+      "src": [
+        0,
+        -1
+      ]
+    },
+    "e_1": {
+      "src": [
+        1,
+        0
+      ],
+      "tgt": [
+        -1,
+        0
+      ]
     }
   },
-  "edge_elbows": {}
+  "edge_elbows": {
+    "e_1": 5
+  }
 }
