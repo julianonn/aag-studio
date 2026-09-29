@@ -131,3 +131,18 @@ def test_layout_save_does_not_clobber_created_timestamp(client):
 
     graphs = client.get("/api/graphs").json()
     assert graphs[0]["created"] == created
+
+
+def test_broken_graph_file_returns_400(client, tmp_path):
+    (tmp_path / "broken.json").write_text("{ not valid json }")
+    response = client.get("/api/graphs/broken")
+    assert response.status_code == 400
+    assert "Broken graph file" in response.json()["detail"]
+
+
+def test_broken_layout_file_returns_400(client, tmp_path):
+    (tmp_path / "broken.json").write_text(json.dumps({"vertices": [], "edges": []}))
+    (tmp_path / "broken.layout.json").write_text("{ not valid json }")
+    response = client.get("/api/graphs/broken/layout")
+    assert response.status_code == 400
+    assert "Broken layout file" in response.json()["detail"]

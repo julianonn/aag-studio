@@ -1,5 +1,5 @@
 import { CanvasSvg } from "./canvas-svg.js";
-import { renderPalette } from "./palette.js";
+import { renderPalette, populateUniformLabelSelect } from "./palette.js";
 import { showContextMenu } from "./contextmenu.js";
 import { topLevelKind, inferredEdgeLabel, nextId, validateGraph, debounce, computeDefaultLayout } from "./graph-utils.js";
 import { attachKeyboardShortcuts } from "./keyboard-shortcuts.js";
@@ -7,8 +7,47 @@ import { AUTOSAVE_DEBOUNCE_MS, DUPLICATE_OFFSET, BASE_ZOOM } from "./constants.j
 import { modalAlert, modalPrompt } from "./modal.js";
 
 export async function openEditor(graphName, labelSet, { onExit, onRename }) {
-  let graph = await fetch(`/api/graphs/${graphName}`).then((response) => response.json());
-  const rawLayout = await fetch(`/api/graphs/${graphName}/layout`).then((response) => response.json());
+  let graphRes;
+  let layoutRes;
+  try {
+    [graphRes, layoutRes] = await Promise.all([
+      fetch(`/api/graphs/${graphName}`),
+      fetch(`/api/graphs/${graphName}/layout`),
+    ]);
+  } catch (err) {
+    await modalAlert(`Failed to connect to server: ${err.message}`, "Connection Error");
+    onExit();
+    return;
+  }
+
+  if (!graphRes.ok) {
+    const errorData = await graphRes.json().catch(() => ({ detail: graphRes.statusText }));
+    await modalAlert(errorData.detail || `Failed to load graph "${graphName}"`, "Broken Graph File");
+    onExit();
+    return;
+  }
+
+  if (!layoutRes.ok) {
+    const errorData = await layoutRes.json().catch(() => ({ detail: layoutRes.statusText }));
+    await modalAlert(errorData.detail || `Failed to load layout for "${graphName}"`, "Broken Layout File");
+    onExit();
+    return;
+  }
+
+  let graph;
+  let rawLayout;
+  try {
+    graph = await graphRes.json();
+    rawLayout = await layoutRes.json();
+    if (!graph || !Array.isArray(graph.vertices) || !Array.isArray(graph.edges)) {
+      throw new Error(`Graph file "${graphName}.json" is missing vertices or edges.`);
+    }
+  } catch (err) {
+    await modalAlert(err.message, "Broken Graph File");
+    onExit();
+    return;
+  }
+
   const positions = rawLayout.positions ?? {};
   if (!Object.keys(positions).length && graph.vertices.length > 0) {
     Object.assign(positions, computeDefaultLayout(graph.vertices, graph.edges));
@@ -21,12 +60,10 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
   const issuesCountEl = document.getElementById("issues-count");
   const violationsList = document.getElementById("violations-list");
 
-  const itemIsland = document.getElementById("item-island");
-  const itemIslandTitle = document.getElementById("item-island-title");
-  const itemIslandBody = document.getElementById("item-island-body");
-  const itemIslandCloseBtn = document.getElementById("item-island-close");
-  const itemIslandDuplicateBtn = document.getElementById("item-island-duplicate");
-  const itemIslandDeleteBtn = document.getElementById("item-island-delete");
+  const leftIsland = document.getElementById("left-island");
+  const leftIslandTitle = document.getElementById("left-island-title");
+  const leftIslandBody = document.getElementById("left-island-body");
+  const leftIslandCloseBtn = document.getElementById("left-island-close");
 
   const undoButton = document.getElementById("btn-undo");
   const redoButton = document.getElementById("btn-redo");
@@ -158,6 +195,7 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
   updateUndoRedoButtons();
 
   let activeSelectedItem = null;
+  let currentIslandMode = null;
   let lastStateBeforeDrag = null;
   let resizeStartState = null;
 
@@ -171,7 +209,9 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
         activeSelectedItem = { type: "edge", id: selection.edges[0] };
         renderSelectedItemIsland();
       } else {
-        hideItemIsland();
+        if (currentIslandMode === "node" || currentIslandMode === "edge") {
+          closeLeftIsland();
+        }
       }
     },
     onNodeDragStart: () => {
@@ -281,9 +321,10 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
       }
     },
     onEdgeConnect: async (sourceId, targetId, srcRel, tgtRel) => {
-      const ok = await tryAddEdge(sourceId, targetId, selectedEdgeStyle, selectedEdgeType, getSelectedEdgeTime(), srcRel, tgtRel);
+      const customId = addEdgeNameVal.trim() || null;
+      const ok = await tryAddEdge(sourceId, targetId, selectedEdgeStyle, selectedEdgeType, getSelectedEdgeTime(), srcRel, tgtRel, customId);
       if (ok) {
-        closeAddPanels();
+        closeLeftIsland();
       }
     },
     onContextMenuNode: (nodeId, clientX, clientY) => {
@@ -303,7 +344,15 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
   });
 
   function rerender() {
-    hideItemIsland();
+    if (activeSelectedItem) {
+      const exists =
+        activeSelectedItem.type === "node"
+          ? graph.vertices.some((v) => v.id === activeSelectedItem.id)
+          : graph.edges.some((e) => e.id === activeSelectedItem.id);
+      if (!exists) {
+        closeLeftIsland();
+      }
+    }
     if (!Object.keys(positions).length && graph.vertices.length > 0) {
       Object.assign(positions, computeDefaultLayout(graph.vertices, graph.edges));
     }
@@ -319,8 +368,13 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
     });
   }
 
-  async function tryAddVertex(label) {
-    const id = nextId(new Set(graph.vertices.map((vertex) => vertex.id)), label);
+  async function tryAddVertex(label, customId = null) {
+    const existingIds = new Set(graph.vertices.map((vertex) => vertex.id));
+    if (customId && existingIds.has(customId)) {
+      await modalAlert(`A vertex named "${customId}" already exists`, "Duplicate vertex");
+      return;
+    }
+    const id = customId || nextId(existingIds, label);
     positions[id] = canvas.getViewCenter();
     await applyGraph({ vertices: [...graph.vertices, { id, label }], edges: graph.edges });
     debouncedSaveLayout();
@@ -333,10 +387,15 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
     type = selectedEdgeType,
     time = getSelectedEdgeTime(),
     srcRel = null,
-    tgtRel = null
+    tgtRel = null,
+    customId = null
   ) {
     const existingIds = new Set(graph.edges.map((edge) => edge.id));
-    const id = nextId(existingIds, "e");
+    if (customId && existingIds.has(customId)) {
+      await modalAlert(`An edge named "${customId}" already exists`, "Duplicate edge");
+      return false;
+    }
+    const id = customId || nextId(existingIds, "e");
     const sourceVertex = graph.vertices.find((vertex) => vertex.id === sourceId);
     const targetVertex = graph.vertices.find((vertex) => vertex.id === targetId);
     if (!sourceVertex || !targetVertex) return false;
@@ -477,41 +536,41 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
     canvas.select(vertexId, "node");
   }
 
-  const paletteIsland = document.getElementById("palette-island");
-  const paletteCloseBtn = document.getElementById("palette-close");
-  const edgeIsland = document.getElementById("edge-island");
-  const edgeCloseBtn = document.getElementById("edge-close");
-  const styleBezierBtn = document.getElementById("style-bezier");
-  const styleTaxiBtn = document.getElementById("style-taxi");
-  const styleStraightBtn = document.getElementById("style-straight");
-  const typeHaBtn = document.getElementById("type-ha");
-  const typeGaBtn = document.getElementById("type-ga");
-  const edgeTimeFromInput = document.getElementById("edge-time-from");
-  const edgeTimeUntilInput = document.getElementById("edge-time-until");
+  async function tryRenameEdge(oldId, newId) {
+    if (!newId || newId === oldId) return;
+    if (graph.edges.some((edge) => edge.id === newId)) {
+      await modalAlert(`An edge named "${newId}" already exists`, "Duplicate edge");
+      return;
+    }
+    if (edgeStyles[oldId]) {
+      edgeStyles[newId] = edgeStyles[oldId];
+      delete edgeStyles[oldId];
+    }
+    if (edgeEndpoints[oldId]) {
+      edgeEndpoints[newId] = edgeEndpoints[oldId];
+      delete edgeEndpoints[oldId];
+    }
+    if (edgeElbows[oldId]) {
+      edgeElbows[newId] = edgeElbows[oldId];
+      delete edgeElbows[oldId];
+    }
+    await applyGraph({
+      vertices: graph.vertices,
+      edges: graph.edges.map((edge) => (edge.id === oldId ? { ...edge, id: newId } : edge)),
+    });
+    debouncedSaveLayout();
+    canvas.select(newId, "edge");
+  }
+
   const toolAddVertex = document.getElementById("tool-add-vertex");
   const toolAddEdge = document.getElementById("tool-add-edge");
 
+  let addVertexNameVal = "";
+  let addEdgeNameVal = "";
   let selectedEdgeStyle = "bezier";
   let selectedEdgeType = "ha";
-
-  function setEdgeCurveStyle(style) {
-    selectedEdgeStyle = style;
-    styleBezierBtn.classList.toggle("active", style === "bezier");
-    styleTaxiBtn.classList.toggle("active", style === "taxi");
-    styleStraightBtn.classList.toggle("active", style === "straight");
-    canvas.setActiveEdgeStyle(style);
-  }
-  styleBezierBtn.onclick = () => setEdgeCurveStyle("bezier");
-  styleTaxiBtn.onclick = () => setEdgeCurveStyle("taxi");
-  styleStraightBtn.onclick = () => setEdgeCurveStyle("straight");
-
-  function setEdgeType(type) {
-    selectedEdgeType = type;
-    typeHaBtn.classList.toggle("active", type === "ha");
-    typeGaBtn.classList.toggle("active", type === "ga");
-  }
-  typeHaBtn.onclick = () => setEdgeType("ha");
-  typeGaBtn.onclick = () => setEdgeType("ga");
+  let edgeTimeFromVal = "inf";
+  let edgeTimeUntilVal = "inf";
 
   function parseTimeBound(val) {
     const trimmed = (val ?? "").trim();
@@ -523,12 +582,14 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
   }
 
   function getSelectedEdgeTime() {
-    return [[parseTimeBound(edgeTimeFromInput.value), parseTimeBound(edgeTimeUntilInput.value)]];
+    return [[parseTimeBound(edgeTimeFromVal), parseTimeBound(edgeTimeUntilVal)]];
   }
 
-  function closeAddPanels() {
-    paletteIsland.hidden = true;
-    edgeIsland.hidden = true;
+  function closeLeftIsland() {
+    currentIslandMode = null;
+    activeSelectedItem = null;
+    leftIsland.hidden = true;
+    leftIslandBody.replaceChildren();
     toolAddVertex.classList.remove("active");
     toolAddEdge.classList.remove("active");
     if (activeMode === "edge") {
@@ -536,28 +597,150 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
     }
   }
 
-  renderPalette(document.getElementById("palette-tree"), labelSet.vertex_labels, tryAddVertex);
+  function openAddVertexIsland() {
+    canvas.clearSelection();
+    activeSelectedItem = null;
+    if (activeMode === "edge") {
+      setMode(previousMode || "pan");
+    }
+    currentIslandMode = "palette";
+    leftIslandTitle.textContent = "Vertex";
+    toolAddVertex.classList.add("active");
+    toolAddEdge.classList.remove("active");
+
+    addVertexNameVal = nextId(new Set(graph.vertices.map((v) => v.id)), "v");
+    const nameInput = document.createElement("input");
+    nameInput.value = addVertexNameVal;
+    nameInput.placeholder = "v_0";
+    nameInput.onchange = () => {
+      addVertexNameVal = nameInput.value.trim();
+    };
+    const nameRow = labeledField("Name", nameInput);
+
+    const container = document.createElement("div");
+    container.id = "palette-tree";
+    renderPalette(container, labelSet.vertex_labels, (label) => {
+      tryAddVertex(label, addVertexNameVal.trim() || null);
+      addVertexNameVal = nextId(new Set(graph.vertices.map((v) => v.id)), "v");
+      nameInput.value = addVertexNameVal;
+    });
+
+    leftIslandBody.replaceChildren(nameRow, container);
+    leftIsland.hidden = false;
+  }
+
+  function renderAddEdgeFields() {
+    const nameInput = document.createElement("input");
+    nameInput.value = addEdgeNameVal;
+    nameInput.placeholder = "e_0";
+    nameInput.onchange = () => {
+      addEdgeNameVal = nameInput.value.trim();
+    };
+    const nameRow = labeledField("Name", nameInput);
+
+    const styleTitle = document.createElement("div");
+    styleTitle.className = "island-section-title";
+    styleTitle.textContent = "Style";
+
+    const styleGroup = document.createElement("div");
+    styleGroup.className = "island-btn-group";
+    const styles = [
+      { id: "bezier", title: "Curved", icon: "mdi-vector-curve" },
+      { id: "taxi", title: "Elbow", icon: "mdi-vector-polyline" },
+      { id: "straight", title: "Straight", icon: "mdi-vector-line" },
+    ];
+    for (const s of styles) {
+      const btn = document.createElement("button");
+      btn.className = `island-group-btn ${selectedEdgeStyle === s.id ? "active" : ""}`;
+      btn.type = "button";
+      btn.title = s.title;
+      btn.innerHTML = `<i class="mdi ${s.icon}"></i>`;
+      btn.onclick = () => {
+        selectedEdgeStyle = s.id;
+        for (const child of styleGroup.children) child.classList.remove("active");
+        btn.classList.add("active");
+        canvas.setActiveEdgeStyle(s.id);
+      };
+      styleGroup.append(btn);
+    }
+
+    const typeTitle = document.createElement("div");
+    typeTitle.className = "island-section-title";
+    typeTitle.textContent = "Type";
+
+    const typeGroup = document.createElement("div");
+    typeGroup.className = "island-btn-group";
+    const types = ["HA", "GA"];
+    for (const t of types) {
+      const btn = document.createElement("button");
+      btn.className = `island-group-btn ${selectedEdgeType === t.toLowerCase() ? "active" : ""}`;
+      btn.type = "button";
+      btn.textContent = t;
+      btn.onclick = () => {
+        selectedEdgeType = t.toLowerCase();
+        for (const child of typeGroup.children) child.classList.remove("active");
+        btn.classList.add("active");
+      };
+      typeGroup.append(btn);
+    }
+
+    const timeTitle = document.createElement("div");
+    timeTitle.className = "island-section-title";
+    timeTitle.textContent = "Time";
+
+    const timeRow = document.createElement("div");
+    timeRow.className = "island-time-row";
+    const fromInput = document.createElement("input");
+    fromInput.className = "island-time-input";
+    fromInput.type = "text";
+    fromInput.value = edgeTimeFromVal;
+    fromInput.onchange = () => {
+      edgeTimeFromVal = fromInput.value;
+    };
+
+    const toSpan = document.createElement("span");
+    toSpan.textContent = "to";
+
+    const untilInput = document.createElement("input");
+    untilInput.className = "island-time-input";
+    untilInput.type = "text";
+    untilInput.value = edgeTimeUntilVal;
+    untilInput.onchange = () => {
+      edgeTimeUntilVal = untilInput.value;
+    };
+
+    timeRow.append(fromInput, toSpan, untilInput);
+
+    return [nameRow, styleTitle, styleGroup, typeTitle, typeGroup, timeTitle, timeRow];
+  }
+
+  function openAddEdgeIsland() {
+    canvas.clearSelection();
+    activeSelectedItem = null;
+    toolAddVertex.classList.remove("active");
+    setMode("edge");
+    currentIslandMode = "add-edge";
+    leftIslandTitle.textContent = "Edge";
+    addEdgeNameVal = nextId(new Set(graph.edges.map((edge) => edge.id)), "e");
+    leftIslandBody.replaceChildren(...renderAddEdgeFields());
+    leftIsland.hidden = false;
+  }
 
   toolAddVertex.onclick = () => {
-    const shouldOpen = paletteIsland.hidden;
-    closeAddPanels();
-    if (shouldOpen) {
-      paletteIsland.hidden = false;
-      toolAddVertex.classList.add("active");
+    if (currentIslandMode === "palette" && !leftIsland.hidden) {
+      closeLeftIsland();
+    } else {
+      openAddVertexIsland();
     }
   };
-  paletteCloseBtn.onclick = closeAddPanels;
 
   toolAddEdge.onclick = () => {
     if (activeMode === "edge") {
-      closeAddPanels();
+      closeLeftIsland();
     } else {
-      closeAddPanels();
-      edgeIsland.hidden = false;
-      setMode("edge");
+      openAddEdgeIsland();
     }
   };
-  edgeCloseBtn.onclick = closeAddPanels;
 
   const issuesDialog = document.getElementById("issues-dialog");
   const issuesCloseBtn = document.getElementById("issues-close");
@@ -597,33 +780,9 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
     }
   }
 
-  function hideItemIsland() {
-    activeSelectedItem = null;
-    itemIsland.hidden = true;
-    itemIslandBody.replaceChildren();
-  }
-
-  itemIslandCloseBtn.onclick = () => {
-    hideItemIsland();
+  leftIslandCloseBtn.onclick = () => {
+    closeLeftIsland();
     canvas.clearSelection();
-  };
-
-  itemIslandDuplicateBtn.onclick = () => {
-    if (!activeSelectedItem) return;
-    if (activeSelectedItem.type === "node") {
-      tryDuplicateVertex(activeSelectedItem.id);
-    } else if (activeSelectedItem.type === "edge") {
-      tryDuplicateEdge(activeSelectedItem.id);
-    }
-  };
-
-  itemIslandDeleteBtn.onclick = () => {
-    if (!activeSelectedItem) return;
-    if (activeSelectedItem.type === "node") {
-      tryDeleteVertex(activeSelectedItem.id);
-    } else if (activeSelectedItem.type === "edge") {
-      tryDeleteEdge(activeSelectedItem.id);
-    }
   };
 
   const ALL_VERTEX_LABELS = Object.keys(labelSet.vertex_labels).sort();
@@ -637,25 +796,63 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
     return row;
   }
 
+  function createItemActionsRow(onDuplicate, onDelete) {
+    const row = document.createElement("div");
+    row.className = "island-actions-row";
+
+    const dupBtn = document.createElement("button");
+    dupBtn.className = "island-action-btn";
+    dupBtn.type = "button";
+    dupBtn.innerHTML = '<i class="mdi mdi-content-copy"></i> Duplicate';
+    dupBtn.onclick = onDuplicate;
+
+    const delBtn = document.createElement("button");
+    delBtn.className = "island-action-btn danger";
+    delBtn.type = "button";
+    delBtn.innerHTML = '<i class="mdi mdi-delete-outline"></i> Delete';
+    delBtn.onclick = onDelete;
+
+    row.append(dupBtn, delBtn);
+    return row;
+  }
+
   function renderNodeFields(vertex) {
     const nameInput = document.createElement("input");
     nameInput.value = vertex.id;
     nameInput.onchange = () => tryRenameVertex(vertex.id, nameInput.value.trim());
+    const nameRow = labeledField("Name", nameInput);
+
+    const paletteTree = document.createElement("div");
+    paletteTree.id = "palette-tree";
+    renderPalette(
+      paletteTree,
+      labelSet.vertex_labels,
+      (newLabel) => tryChangeVertexLabel(vertex.id, newLabel),
+      vertex.label
+    );
+
+    const separator = document.createElement("div");
+    separator.className = "island-separator";
 
     const labelSelect = document.createElement("select");
-    for (const label of ALL_VERTEX_LABELS) {
-      const option = document.createElement("option");
-      option.value = label;
-      option.textContent = label;
-      option.selected = label === vertex.label;
-      labelSelect.append(option);
-    }
+    populateUniformLabelSelect(labelSelect, labelSet.vertex_labels, vertex.label);
     labelSelect.onchange = () => tryChangeVertexLabel(vertex.id, labelSelect.value);
+    const labelRow = labeledField("Label", labelSelect);
 
-    return [labeledField("Name", nameInput), labeledField("Label", labelSelect)];
+    const actionsRow = createItemActionsRow(
+      () => tryDuplicateVertex(vertex.id),
+      () => tryDeleteVertex(vertex.id)
+    );
+
+    return [nameRow, paletteTree, separator, labelRow, actionsRow];
   }
 
   function renderEdgeFields(edge) {
+    const nameInput = document.createElement("input");
+    nameInput.value = edge.id;
+    nameInput.onchange = () => tryRenameEdge(edge.id, nameInput.value.trim());
+    const nameRow = labeledField("Name", nameInput);
+
     const currentStyle = edgeStyles[edge.id] ?? "bezier";
     const styleTitle = document.createElement("div");
     styleTitle.className = "island-section-title";
@@ -663,7 +860,6 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
 
     const styleGroup = document.createElement("div");
     styleGroup.className = "island-btn-group";
-
     const styles = [
       { id: "bezier", title: "Curved", icon: "mdi-vector-curve" },
       { id: "taxi", title: "Elbow", icon: "mdi-vector-polyline" },
@@ -679,9 +875,90 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
       styleGroup.append(btn);
     }
 
-    const fields = [styleTitle, styleGroup];
+    const typeTitle = document.createElement("div");
+    typeTitle.className = "island-section-title";
+    typeTitle.textContent = "Type";
 
-    // Elbow position if taxi style
+    const typeGroup = document.createElement("div");
+    typeGroup.className = "island-btn-group";
+    const types = ["HA", "GA"];
+    for (const t of types) {
+      const btn = document.createElement("button");
+      btn.className = `island-group-btn ${edge.label === t.toLowerCase() ? "active" : ""}`;
+      btn.type = "button";
+      btn.textContent = t;
+      btn.onclick = async () => {
+        if (edge.label === t.toLowerCase()) return;
+        await applyGraph({
+          vertices: graph.vertices,
+          edges: graph.edges.map((e) => (e.id === edge.id ? { ...e, label: t.toLowerCase() } : e)),
+        });
+        canvas.select(edge.id, "edge");
+      };
+      typeGroup.append(btn);
+    }
+
+    const timeTitle = document.createElement("div");
+    timeTitle.className = "island-section-title";
+    timeTitle.textContent = "Time";
+
+    const intervals = edge.time?.length ? edge.time : [[0, null]];
+    const timeRows = intervals.map((interval, intervalIndex) => {
+      const row = document.createElement("div");
+      row.className = "island-time-row";
+      const fromInput = document.createElement("input");
+      fromInput.className = "island-time-input";
+      fromInput.type = "text";
+      fromInput.value = interval[0] ?? "";
+      fromInput.placeholder = "0";
+
+      const toSpan = document.createElement("span");
+      toSpan.textContent = "to";
+
+      const untilInput = document.createElement("input");
+      untilInput.className = "island-time-input";
+      untilInput.type = "text";
+      untilInput.value = interval[1] ?? "";
+      untilInput.placeholder = "inf";
+
+      async function commit() {
+        const newInterval = [
+          fromInput.value === "" ? null : parseTimeBound(fromInput.value),
+          untilInput.value === "" ? null : parseTimeBound(untilInput.value),
+        ];
+        const newEdges = graph.edges.map((graphEdge) =>
+          graphEdge.id !== edge.id
+            ? graphEdge
+            : { ...graphEdge, time: intervals.map((iv, idx) => (idx === intervalIndex ? newInterval : iv)) }
+        );
+        await applyGraph({ vertices: graph.vertices, edges: newEdges });
+        canvas.select(edge.id, "edge");
+      }
+      fromInput.onchange = commit;
+      untilInput.onchange = commit;
+
+      row.append(fromInput, toSpan, untilInput);
+      return row;
+    });
+
+    const separator = document.createElement("div");
+    separator.className = "island-separator";
+
+    const endpointsTitle = document.createElement("div");
+    endpointsTitle.className = "island-section-title";
+    endpointsTitle.textContent = "Endpoints";
+
+    const customEp = edgeEndpoints[edge.id];
+    const srcRow = document.createElement("div");
+    srcRow.className = "island-meta-row";
+    srcRow.innerHTML = `<span>From: <strong>${edge.src}</strong></span><span>${customEp?.src ? "custom" : "auto"}</span>`;
+
+    const tgtRow = document.createElement("div");
+    tgtRow.className = "island-meta-row";
+    tgtRow.innerHTML = `<span>To: <strong>${edge.tgt}</strong></span><span>${customEp?.tgt ? "custom" : "auto"}</span>`;
+
+    const additions = [separator, endpointsTitle, srcRow, tgtRow];
+
     if (currentStyle === "taxi") {
       const elbowTitle = document.createElement("div");
       elbowTitle.className = "island-section-title";
@@ -713,168 +990,47 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
         });
         debouncedSaveLayout();
       };
-
-      const resetElbowBtn = document.createElement("button");
-      resetElbowBtn.className = "island-action-btn";
-      resetElbowBtn.type = "button";
-      resetElbowBtn.textContent = "Reset elbow to center";
-      resetElbowBtn.onclick = () => {
-        undoStack.push(snapshotState());
-        redoStack.length = 0;
-        updateUndoRedoButtons();
-        delete edgeElbows[edge.id];
-        canvas.setData({
-          vertices: graph.vertices,
-          edges: graph.edges,
-          positions,
-          sizes,
-          edgeStyles,
-          edgeEndpoints,
-          edgeElbows,
-          labelSet,
-        });
-        debouncedSaveLayout();
-        renderSelectedItemIsland();
-      };
-
-      fields.push(elbowTitle, labeledField("Pos", elbowInput), resetElbowBtn);
+      additions.push(elbowTitle, labeledField("Pos", elbowInput));
     }
 
-    // Endpoints metadata
-    const endpointsTitle = document.createElement("div");
-    endpointsTitle.className = "island-section-title";
-    endpointsTitle.textContent = "Endpoints";
+    const actionsRow = createItemActionsRow(
+      () => tryDuplicateEdge(edge.id),
+      () => tryDeleteEdge(edge.id)
+    );
+    additions.push(actionsRow);
 
-    const customEp = edgeEndpoints[edge.id];
-    const srcRow = document.createElement("div");
-    srcRow.className = "island-meta-row";
-    srcRow.innerHTML = `<span>From: <strong>${edge.src}</strong></span><span>${customEp?.src ? "custom" : "auto"}</span>`;
-
-    const tgtRow = document.createElement("div");
-    tgtRow.className = "island-meta-row";
-    tgtRow.innerHTML = `<span>To: <strong>${edge.tgt}</strong></span><span>${customEp?.tgt ? "custom" : "auto"}</span>`;
-
-    const resetEpBtn = document.createElement("button");
-    resetEpBtn.className = "island-action-btn";
-    resetEpBtn.type = "button";
-    resetEpBtn.textContent = "Reset endpoints to auto";
-    resetEpBtn.onclick = () => {
-      undoStack.push(snapshotState());
-      redoStack.length = 0;
-      updateUndoRedoButtons();
-      delete edgeEndpoints[edge.id];
-      canvas.setData({
-        vertices: graph.vertices,
-        edges: graph.edges,
-        positions,
-        sizes,
-        edgeStyles,
-        edgeEndpoints,
-        edgeElbows,
-        labelSet,
-      });
-      debouncedSaveLayout();
-      renderSelectedItemIsland();
-    };
-
-    fields.push(endpointsTitle, srcRow, tgtRow, resetEpBtn);
-
-    const typeTitle = document.createElement("div");
-    typeTitle.className = "island-section-title";
-    typeTitle.textContent = "Type";
-
-    const typeGroup = document.createElement("div");
-    typeGroup.className = "island-btn-group";
-
-    const haBtn = document.createElement("button");
-    haBtn.className = `island-group-btn ${edge.label === "ha" ? "active" : ""}`;
-    haBtn.type = "button";
-    haBtn.textContent = "HA";
-    haBtn.onclick = async () => {
-      if (edge.label === "ha") return;
-      await applyGraph({
-        vertices: graph.vertices,
-        edges: graph.edges.map((e) => (e.id === edge.id ? { ...e, label: "ha" } : e)),
-      });
-      canvas.select(edge.id, "edge");
-    };
-
-    const gaBtn = document.createElement("button");
-    gaBtn.className = `island-group-btn ${edge.label === "ga" ? "active" : ""}`;
-    gaBtn.type = "button";
-    gaBtn.textContent = "GA";
-    gaBtn.onclick = async () => {
-      if (edge.label === "ga") return;
-      await applyGraph({
-        vertices: graph.vertices,
-        edges: graph.edges.map((e) => (e.id === edge.id ? { ...e, label: "ga" } : e)),
-      });
-      canvas.select(edge.id, "edge");
-    };
-    typeGroup.append(haBtn, gaBtn);
-    fields.push(typeTitle, typeGroup);
-
-    const timeTitle = document.createElement("div");
-    timeTitle.className = "island-section-title";
-    timeTitle.textContent = "Time";
-
-    const timeList = document.createElement("ul");
-    edge.time.forEach((interval, intervalIndex) => {
-      const li = document.createElement("li");
-      const startInput = document.createElement("input");
-      startInput.value = interval[0] ?? "";
-      startInput.placeholder = "0";
-      const endInput = document.createElement("input");
-      endInput.value = interval[1] ?? "";
-      endInput.placeholder = "open-ended";
-      li.append(labeledField("From", startInput), labeledField("Until", endInput));
-      timeList.append(li);
-
-      async function commit() {
-        const newInterval = [startInput.value === "" ? null : Number(startInput.value), endInput.value === "" ? null : Number(endInput.value)];
-        const newEdges = graph.edges.map((graphEdge) =>
-          graphEdge.id !== edge.id ? graphEdge : { ...graphEdge, time: edge.time.map((iv, idx) => (idx === intervalIndex ? newInterval : iv)) }
-        );
-        await applyGraph({ vertices: graph.vertices, edges: newEdges });
-        canvas.select(edge.id, "edge");
-      }
-      startInput.onchange = commit;
-      endInput.onchange = commit;
-    });
-    fields.push(timeTitle, timeList);
-
-    return fields;
+    return [nameRow, styleTitle, styleGroup, typeTitle, typeGroup, timeTitle, ...timeRows, ...additions];
   }
 
   function renderSelectedItemIsland() {
     if (!activeSelectedItem) {
-      hideItemIsland();
+      closeLeftIsland();
       return;
     }
 
-    paletteIsland.hidden = true;
-    edgeIsland.hidden = true;
     toolAddVertex.classList.remove("active");
     toolAddEdge.classList.remove("active");
 
     if (activeSelectedItem.type === "node") {
       const vertex = graph.vertices.find((v) => v.id === activeSelectedItem.id);
       if (!vertex) {
-        hideItemIsland();
+        closeLeftIsland();
         return;
       }
-      itemIslandTitle.textContent = "Vertex";
-      itemIslandBody.replaceChildren(...renderNodeFields(vertex));
-      itemIsland.hidden = false;
+      currentIslandMode = "node";
+      leftIslandTitle.textContent = "Vertex";
+      leftIslandBody.replaceChildren(...renderNodeFields(vertex));
+      leftIsland.hidden = false;
     } else if (activeSelectedItem.type === "edge") {
       const edge = graph.edges.find((e) => e.id === activeSelectedItem.id);
       if (!edge) {
-        hideItemIsland();
+        closeLeftIsland();
         return;
       }
-      itemIslandTitle.textContent = "Edge";
-      itemIslandBody.replaceChildren(...renderEdgeFields(edge));
-      itemIsland.hidden = false;
+      currentIslandMode = "edge";
+      leftIslandTitle.textContent = "Edge";
+      leftIslandBody.replaceChildren(...renderEdgeFields(edge));
+      leftIsland.hidden = false;
     }
   }
 
@@ -901,11 +1057,11 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
   }
 
   toolSelectBtn.onclick = () => {
-    closeAddPanels();
+    closeLeftIsland();
     setMode("select");
   };
   toolPanBtn.onclick = () => {
-    closeAddPanels();
+    closeLeftIsland();
     setMode("pan");
   };
   setMode("pan");
@@ -917,10 +1073,9 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
     onDuplicate: tryDuplicateSelected,
     onDelete: tryDeleteSelected,
     onEscape: () => {
-      hideItemIsland();
+      closeLeftIsland();
       canvas.clearSelection();
       hamburgerMenu.hidden = true;
-      closeAddPanels();
       issuesDialog.hidden = true;
     },
     onSelectMode: () => setMode("select"),

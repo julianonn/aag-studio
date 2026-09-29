@@ -1,6 +1,7 @@
 """FastAPI app: serves the label set, and loads/saves graphs/*.json."""
 
 import json
+import threading
 import time
 from pathlib import Path
 
@@ -16,6 +17,8 @@ REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 LABELS_PATH = REPO_ROOT / "labels.yaml"
 GRAPHS_DIR = REPO_ROOT / "graphs"
 FRONTEND_DIR = REPO_ROOT / "frontend"
+
+_file_lock = threading.Lock()
 
 app = FastAPI()
 
@@ -42,11 +45,26 @@ def _layout_path(name: str) -> Path:
 
 def _read_layout(name: str) -> dict:
     path = _layout_path(name)
-    return json.loads(path.read_text()) if path.exists() else {}
+    if not path.exists():
+        return {}
+    try:
+        return json.loads(path.read_text())
+    except json.JSONDecodeError:
+        return {}
 
 
 def _write_layout(name: str, layout: dict) -> None:
-    _layout_path(name).write_text(json.dumps(layout, indent=2))
+    path = _layout_path(name)
+    temp_path = path.with_suffix(".tmp")
+    temp_path.write_text(json.dumps(layout, indent=2))
+    temp_path.replace(path)
+
+
+def _write_graph(name: str, text: str) -> None:
+    path = _graph_path(name)
+    temp_path = path.with_suffix(".tmp")
+    temp_path.write_text(text)
+    temp_path.replace(path)
 
 
 @app.get("/api/labels")
@@ -75,7 +93,10 @@ def get_graph(name: str) -> dict:
     path = _graph_path(name)
     if not path.exists():
         raise HTTPException(status_code=404, detail=f"no such graph: {name}")
-    return json.loads(path.read_text())
+    try:
+        return json.loads(path.read_text())
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=400, detail=f"Broken graph file '{path.name}': {exc}")
 
 
 @app.put("/api/graphs/{name}")
@@ -84,19 +105,12 @@ def put_graph(name: str, graph: Graph) -> dict:
     if violations:
         raise HTTPException(status_code=400, detail=violations)
     is_new = not _graph_path(name).exists()
-    _graph_path(name).write_text(graph.model_dump_json(indent=2))
-    layout = _read_layout(name)
-    if is_new:
-        layout.setdefault("created", time.time())
-    valid_vertex_ids = {vertex.id for vertex in graph.vertices}
-    valid_edge_ids = {edge.id for edge in graph.edges}
-    if "positions" in layout:
-        layout["positions"] = {k: v for k, v in layout["positions"].items() if k in valid_vertex_ids}
-    if "sizes" in layout:
-        layout["sizes"] = {k: v for k, v in layout["sizes"].items() if k in valid_vertex_ids}
-    if "edge_styles" in layout:
-        layout["edge_styles"] = {k: v for k, v in layout["edge_styles"].items() if k in valid_edge_ids}
-    _write_layout(name, layout)
+    with _file_lock:
+        _write_graph(name, graph.model_dump_json(indent=2))
+        if is_new:
+            layout = _read_layout(name)
+            layout.setdefault("created", time.time())
+            _write_layout(name, layout)
     return {}
 
 
@@ -112,10 +126,11 @@ def rename_graph(name: str, body: RenameRequest) -> dict:
         raise HTTPException(status_code=404, detail=f"no such graph: {name}")
     if new_path.exists():
         raise HTTPException(status_code=400, detail=f"graph already exists: {body.new_name}")
-    old_path.rename(new_path)
-    old_layout = _layout_path(name)
-    if old_layout.exists():
-        old_layout.rename(_layout_path(body.new_name))
+    with _file_lock:
+        old_path.rename(new_path)
+        old_layout = _layout_path(name)
+        if old_layout.exists():
+            old_layout.rename(_layout_path(body.new_name))
     return {"name": body.new_name}
 
 
@@ -124,37 +139,47 @@ def delete_graph(name: str) -> dict:
     path = _graph_path(name)
     if not path.exists():
         raise HTTPException(status_code=404, detail=f"no such graph: {name}")
-    path.unlink()
-    _layout_path(name).unlink(missing_ok=True)
+    with _file_lock:
+        path.unlink()
+        _layout_path(name).unlink(missing_ok=True)
     return {}
 
 
 @app.get("/api/graphs/{name}/layout")
 def get_layout(name: str) -> dict:
     path = _layout_path(name)
-    return json.loads(path.read_text()) if path.exists() else {}
+    if not path.exists():
+        return {}
+    try:
+        return json.loads(path.read_text())
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=400, detail=f"Broken layout file '{path.name}': {exc}")
 
 
 @app.put("/api/graphs/{name}/layout")
 def put_layout(name: str, layout: dict) -> dict:
-    existing = _read_layout(name)
-    existing.update(layout)
-    graph_path = _graph_path(name)
-    if graph_path.exists():
-        graph_data = json.loads(graph_path.read_text())
-        valid_vertex_ids = {vertex["id"] for vertex in graph_data.get("vertices", [])}
-        valid_edge_ids = {edge["id"] for edge in graph_data.get("edges", [])}
-        if "positions" in existing:
-            existing["positions"] = {k: v for k, v in existing["positions"].items() if k in valid_vertex_ids}
-        if "sizes" in existing:
-            existing["sizes"] = {k: v for k, v in existing["sizes"].items() if k in valid_vertex_ids}
-        if "edge_styles" in existing:
-            existing["edge_styles"] = {k: v for k, v in existing["edge_styles"].items() if k in valid_edge_ids}
-        if "edge_endpoints" in existing:
-            existing["edge_endpoints"] = {k: v for k, v in existing["edge_endpoints"].items() if k in valid_edge_ids}
-        if "edge_elbows" in existing:
-            existing["edge_elbows"] = {k: v for k, v in existing["edge_elbows"].items() if k in valid_edge_ids}
-    _write_layout(name, existing)
+    with _file_lock:
+        existing = _read_layout(name)
+        existing.update(layout)
+        graph_path = _graph_path(name)
+        if graph_path.exists():
+            try:
+                graph_data = json.loads(graph_path.read_text())
+                valid_vertex_ids = {vertex["id"] for vertex in graph_data.get("vertices", [])}
+                valid_edge_ids = {edge["id"] for edge in graph_data.get("edges", [])}
+                if "positions" in existing:
+                    existing["positions"] = {k: v for k, v in existing["positions"].items() if k in valid_vertex_ids}
+                if "sizes" in existing:
+                    existing["sizes"] = {k: v for k, v in existing["sizes"].items() if k in valid_vertex_ids}
+                if "edge_styles" in existing:
+                    existing["edge_styles"] = {k: v for k, v in existing["edge_styles"].items() if k in valid_edge_ids}
+                if "edge_endpoints" in existing:
+                    existing["edge_endpoints"] = {k: v for k, v in existing["edge_endpoints"].items() if k in valid_edge_ids}
+                if "edge_elbows" in existing:
+                    existing["edge_elbows"] = {k: v for k, v in existing["edge_elbows"].items() if k in valid_edge_ids}
+            except Exception:
+                pass
+        _write_layout(name, existing)
     return {}
 
 
