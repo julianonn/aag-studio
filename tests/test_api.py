@@ -27,7 +27,13 @@ def test_save_then_load_round_trips(client):
             {"id": "iphone", "label": "iphone"},
         ],
         "edges": [
-            {"id": "e1", "src": "usr", "tgt": "iphone", "label": "ha", "time": [[0, None]]}
+            {
+                "id": "e1",
+                "src": "usr",
+                "tgt": "iphone",
+                "label": "ha",
+                "time": [[0, None]],
+            }
         ],
     }
     put_response = client.put("/api/graphs/test_graph", json=graph)
@@ -41,7 +47,9 @@ def test_save_then_load_round_trips(client):
 def test_invalid_graph_is_rejected_and_not_written(client, tmp_path):
     graph = {
         "vertices": [{"id": "a1", "label": "A"}, {"id": "a2", "label": "A"}],
-        "edges": [{"id": "e1", "src": "a1", "tgt": "a2", "label": "ga", "time": [[0, None]]}],
+        "edges": [
+            {"id": "e1", "src": "a1", "tgt": "a2", "label": "ga", "time": [[0, None]]}
+        ],
     }
     response = client.put("/api/graphs/bad_graph", json=graph)
     assert response.status_code == 400
@@ -69,7 +77,10 @@ def test_created_timestamp_does_not_change_on_later_saves(client):
     client.put("/api/graphs/one", json={"vertices": [], "edges": []})
     first_created = client.get("/api/graphs").json()[0]["created"]
 
-    client.put("/api/graphs/one", json={"vertices": [{"id": "a", "label": "resource"}], "edges": []})
+    client.put(
+        "/api/graphs/one",
+        json={"vertices": [{"id": "a", "label": "resource"}], "edges": []},
+    )
     second_created = client.get("/api/graphs").json()[0]["created"]
 
     assert first_created == second_created

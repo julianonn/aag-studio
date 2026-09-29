@@ -27,11 +27,15 @@ class LabelSet:
     def is_a(self, label: str, ancestor: str) -> bool:
         if label == ancestor:
             return True
-        return any(self.is_a(parent, ancestor) for parent in self.vertex_parents.get(label, []))
+        return any(
+            self.is_a(parent, ancestor) for parent in self.vertex_parents.get(label, [])
+        )
 
     def edge_label_for(self, source_label: str, target_label: str) -> str | None:
         for rule in self.edge_rules:
-            if self.is_a(source_label, rule["source"]) and self.is_a(target_label, rule["target"]):
+            if self.is_a(source_label, rule["source"]) and self.is_a(
+                target_label, rule["target"]
+            ):
                 return rule["label"]
         return None
 
@@ -67,10 +71,14 @@ def validate_rag(graph: Graph, label_set: LabelSet) -> list[str]:
 
     for edge in graph.edges:
         if edge.src not in vertices_by_id:
-            violations.append(f"edge {edge.id} references unknown source vertex: {edge.src}")
+            violations.append(
+                f"edge {edge.id} references unknown source vertex: {edge.src}"
+            )
             continue
         if edge.tgt not in vertices_by_id:
-            violations.append(f"edge {edge.id} references unknown target vertex: {edge.tgt}")
+            violations.append(
+                f"edge {edge.id} references unknown target vertex: {edge.tgt}"
+            )
             continue
         if edge.label not in label_set.edge_labels:
             violations.append(f"edge {edge.id} has unknown label: {edge.label}")

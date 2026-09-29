@@ -96,7 +96,9 @@ def get_graph(name: str) -> dict:
     try:
         return json.loads(path.read_text())
     except json.JSONDecodeError as exc:
-        raise HTTPException(status_code=400, detail=f"Broken graph file '{path.name}': {exc}")
+        raise HTTPException(
+            status_code=400, detail=f"Broken graph file '{path.name}': {exc}"
+        )
 
 
 @app.put("/api/graphs/{name}")
@@ -125,7 +127,9 @@ def rename_graph(name: str, body: RenameRequest) -> dict:
     if not old_path.exists():
         raise HTTPException(status_code=404, detail=f"no such graph: {name}")
     if new_path.exists():
-        raise HTTPException(status_code=400, detail=f"graph already exists: {body.new_name}")
+        raise HTTPException(
+            status_code=400, detail=f"graph already exists: {body.new_name}"
+        )
     with _file_lock:
         old_path.rename(new_path)
         old_layout = _layout_path(name)
@@ -153,7 +157,9 @@ def get_layout(name: str) -> dict:
     try:
         return json.loads(path.read_text())
     except json.JSONDecodeError as exc:
-        raise HTTPException(status_code=400, detail=f"Broken layout file '{path.name}': {exc}")
+        raise HTTPException(
+            status_code=400, detail=f"Broken layout file '{path.name}': {exc}"
+        )
 
 
 @app.put("/api/graphs/{name}/layout")
@@ -165,18 +171,40 @@ def put_layout(name: str, layout: dict) -> dict:
         if graph_path.exists():
             try:
                 graph_data = json.loads(graph_path.read_text())
-                valid_vertex_ids = {vertex["id"] for vertex in graph_data.get("vertices", [])}
+                valid_vertex_ids = {
+                    vertex["id"] for vertex in graph_data.get("vertices", [])
+                }
                 valid_edge_ids = {edge["id"] for edge in graph_data.get("edges", [])}
                 if "positions" in existing:
-                    existing["positions"] = {k: v for k, v in existing["positions"].items() if k in valid_vertex_ids}
+                    existing["positions"] = {
+                        k: v
+                        for k, v in existing["positions"].items()
+                        if k in valid_vertex_ids
+                    }
                 if "sizes" in existing:
-                    existing["sizes"] = {k: v for k, v in existing["sizes"].items() if k in valid_vertex_ids}
+                    existing["sizes"] = {
+                        k: v
+                        for k, v in existing["sizes"].items()
+                        if k in valid_vertex_ids
+                    }
                 if "edge_styles" in existing:
-                    existing["edge_styles"] = {k: v for k, v in existing["edge_styles"].items() if k in valid_edge_ids}
+                    existing["edge_styles"] = {
+                        k: v
+                        for k, v in existing["edge_styles"].items()
+                        if k in valid_edge_ids
+                    }
                 if "edge_endpoints" in existing:
-                    existing["edge_endpoints"] = {k: v for k, v in existing["edge_endpoints"].items() if k in valid_edge_ids}
+                    existing["edge_endpoints"] = {
+                        k: v
+                        for k, v in existing["edge_endpoints"].items()
+                        if k in valid_edge_ids
+                    }
                 if "edge_elbows" in existing:
-                    existing["edge_elbows"] = {k: v for k, v in existing["edge_elbows"].items() if k in valid_edge_ids}
+                    existing["edge_elbows"] = {
+                        k: v
+                        for k, v in existing["edge_elbows"].items()
+                        if k in valid_edge_ids
+                    }
             except Exception:
                 pass
         _write_layout(name, existing)
