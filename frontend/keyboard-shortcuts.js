@@ -4,6 +4,7 @@ export function attachKeyboardShortcuts({
   cy,
   onUndo,
   onRedo,
+  onDuplicate,
   onDelete,
   onEscape,
   onSelectMode,
@@ -39,6 +40,12 @@ export function attachKeyboardShortcuts({
     if (modifier && evt.key.toLowerCase() === "a") {
       evt.preventDefault();
       cy.elements().select();
+      return;
+    }
+
+    if (modifier && evt.key.toLowerCase() === "d") {
+      evt.preventDefault();
+      onDuplicate?.();
       return;
     }
 

@@ -1,4 +1,4 @@
-import { MIN_NODE_SIZE, CONNECT_HANDLE_OFFSET } from "./constants.js";
+import { MIN_NODE_SIZE } from "./constants.js";
 
 function screenToModel(cy, containerEl, clientX, clientY) {
   const rect = containerEl.getBoundingClientRect();
@@ -23,11 +23,17 @@ function makeResizeHandle(container, corner) {
   return el;
 }
 
-export function attachSelectionHandles(cy, eh, containerEl, { onConnect, onReconnect, onResize }) {
+export function attachSelectionHandles(cy, eh, containerEl, { onConnect, onReconnect, onResizeStart, onResize }) {
   let hoveredNode = null;
   let dragging = false;
 
-  // edgehandles only draws the line; drop target is tracked via node mouseover
+  cy.on("mouseover", "node", (evt) => {
+    if (dragging) hoveredNode = evt.target;
+  });
+  cy.on("mouseout", "node", () => {
+    if (dragging) hoveredNode = null;
+  });
+
   function driveEdgeGesture(sourceNode, onComplete) {
     dragging = true;
     eh.start(sourceNode);
@@ -42,58 +48,12 @@ export function attachSelectionHandles(cy, eh, containerEl, { onConnect, onRecon
       eh.stop();
       dragging = false;
       const target = hoveredNode && !hoveredNode.same(sourceNode) ? hoveredNode : null;
+      hoveredNode = null;
       onComplete(target ? target.id() : null);
     }
 
     document.addEventListener("mousemove", onMouseMove);
     document.addEventListener("mouseup", onMouseUp);
-  }
-
-  const connectHandles = { top: createConnectionHandle(containerEl), right: createConnectionHandle(containerEl), bottom: createConnectionHandle(containerEl), left: createConnectionHandle(containerEl) };
-
-  function positionConnectHandles(node) {
-    const box = node.renderedBoundingBox();
-    connectHandles.top.style.left = `${(box.x1 + box.x2) / 2}px`;
-    connectHandles.top.style.top = `${box.y1 - CONNECT_HANDLE_OFFSET}px`;
-    connectHandles.right.style.left = `${box.x2 + CONNECT_HANDLE_OFFSET}px`;
-    connectHandles.right.style.top = `${(box.y1 + box.y2) / 2}px`;
-    connectHandles.bottom.style.left = `${(box.x1 + box.x2) / 2}px`;
-    connectHandles.bottom.style.top = `${box.y2 + CONNECT_HANDLE_OFFSET}px`;
-    connectHandles.left.style.left = `${box.x1 - CONNECT_HANDLE_OFFSET}px`;
-    connectHandles.left.style.top = `${(box.y1 + box.y2) / 2}px`;
-  }
-
-  function showConnectHandles() {
-    for (const el of Object.values(connectHandles)) el.hidden = false;
-  }
-  function hideConnectHandles() {
-    for (const el of Object.values(connectHandles)) el.hidden = true;
-  }
-
-  cy.on("mouseover", "node", (evt) => {
-    hoveredNode = evt.target;
-    if (dragging) return;
-    positionConnectHandles(hoveredNode);
-    showConnectHandles();
-  });
-  cy.on("mouseout", "node", () => {
-    hoveredNode = null;
-    if (!dragging) hideConnectHandles();
-  });
-  cy.on("pan zoom position", () => {
-    if (hoveredNode && !dragging) positionConnectHandles(hoveredNode);
-  });
-  for (const el of Object.values(connectHandles)) {
-    el.addEventListener("mousedown", (evt) => {
-      evt.preventDefault();
-      evt.stopPropagation();
-      hideConnectHandles();
-      if (!hoveredNode) return;
-      const sourceId = hoveredNode.id();
-      driveEdgeGesture(hoveredNode, (targetId) => {
-        if (targetId) onConnect(sourceId, targetId);
-      });
-    });
   }
 
   // edgehandles drags source -> target; to move the source end, anchor on target and swap endpoints on reconnect
@@ -203,6 +163,7 @@ export function attachSelectionHandles(cy, eh, containerEl, { onConnect, onRecon
       mousedownEvt.preventDefault();
       mousedownEvt.stopPropagation();
       if (!selectedNode) return;
+      onResizeStart?.();
       const node = selectedNode;
       const box = node.boundingBox();
       const opposite = OPPOSITE_CORNER[corner];

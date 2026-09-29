@@ -32,6 +32,9 @@ button { outline: none; border: none; background: none; }
 #graph.mode-pan { cursor: grab; }
 #graph.mode-pan:active { cursor: grabbing; }
 #graph.mode-select { cursor: default; }
+#graph.mode-edge { cursor: crosshair; }
+
+.edge-preview-layer { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 25; overflow: visible; }
 
 .floating-island {
   position: absolute; z-index: 30; background: #fff; border: 1px solid var(--color-border);
@@ -69,6 +72,8 @@ button { outline: none; border: none; background: none; }
 .island-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-weight: 600; }
 .island-header button { cursor: pointer; padding: 2px; border-radius: 4px; }
 .island-header button:hover { background: #eee; }
+.island-header-actions { display: flex; align-items: center; gap: 2px; }
+.island-header-actions button { padding: 4px 6px; font-size: 14px; }
 
 .island-divider { width: 1px; height: 20px; background: var(--color-border); margin: 0 2px; }
 
@@ -116,36 +121,31 @@ button { outline: none; border: none; background: none; }
 .resize-handle.tl, .resize-handle.br { cursor: nwse-resize; }
 .resize-handle.tr, .resize-handle.bl { cursor: nesw-resize; }
 
-.floating-toolbar {
-  position: absolute; transform: translate(-50%, calc(-100% - 10px));
-  background: var(--color-toolbar-bg); color: var(--color-toolbar-text);
-  border: 1px solid var(--color-menu-border); border-radius: 8px; padding: 8px 10px; font-size: 12px; z-index: 20;
-  box-shadow: 0 2px 8px var(--color-menu-shadow); white-space: nowrap;
+#item-island { z-index: 35; }
+#item-island ul { list-style: none; padding: 0; margin: 4px 0 0; }
+#item-island ul li { margin-bottom: 6px; }
+
+.field-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 4px 0; }
+.field-row label { color: var(--color-toolbar-label); font-size: 11px; font-weight: 500; min-width: 45px; }
+.field-row input, .field-row select {
+  border: 1px solid var(--color-border); border-radius: 4px; padding: 4px 6px; font-size: 12px;
+  background: #fff; flex: 1; min-width: 0; box-sizing: border-box;
 }
-.floating-toolbar ul { list-style: none; padding: 0; margin: 4px 0 0; }
-.toolbar-row { display: flex; gap: 2px; }
-.toolbar-row button { padding: 4px 6px; border-radius: 4px; cursor: pointer; }
-.toolbar-row button:hover { background: #f0f2f5; }
-.field-row { display: flex; align-items: center; gap: 6px; margin: 4px 0; }
-.floating-toolbar label { color: var(--color-toolbar-label); font-size: 11px; }
-.floating-toolbar input, .floating-toolbar select {
-  border: 1px solid var(--color-border); border-radius: 4px; padding: 2px 4px; font-size: 12px;
-}
-.floating-toolbar input { width: 70px; }
 
 .island-body { display: flex; flex-direction: column; gap: 8px; font-size: 12px; }
-.island-instruction { margin: 0; color: #555; line-height: 1.4; }
 .island-section-title { font-weight: 600; font-size: 11px; text-transform: uppercase; color: #888; margin-top: 6px; }
-.island-rule-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 4px; }
-.island-rule-list li { font-size: 12px; color: #444; }
-.island-rule-list code { background: #f0f2f5; padding: 2px 4px; border-radius: 4px; font-family: inherit; font-weight: 600; }
-.edge-style-picker { display: flex; gap: 4px; }
-.style-opt {
+.island-btn-group { display: flex; gap: 4px; }
+.island-group-btn {
   flex: 1; padding: 6px 4px; border: 1px solid var(--color-border); border-radius: 6px;
-  background: #fff; cursor: pointer; font-size: 11px; text-align: center;
+  background: #fff; cursor: pointer; font-size: 12px; display: flex; align-items: center; justify-content: center;
 }
-.style-opt:hover { background: #f0f2f5; }
-.style-opt.active { background: #e3ecfc; border-color: var(--color-selected); color: var(--color-selected); font-weight: 600; }
+.island-group-btn:hover { background: #f0f2f5; }
+.island-group-btn.active { background: #e3ecfc; border-color: var(--color-selected); color: var(--color-selected); font-weight: 600; }
+.island-group-btn i { font-size: 16px; }
+.island-time-row { display: flex; align-items: center; gap: 6px; }
+.island-time-input {
+  width: 65px; border: 1px solid var(--color-border); border-radius: 4px; padding: 4px 6px; font-size: 12px; box-sizing: border-box;
+}
 
 .modal-backdrop {
   position: fixed; inset: 0; background: rgba(0, 0, 0, 0.4); z-index: 1000;

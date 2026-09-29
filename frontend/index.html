@@ -60,20 +60,38 @@
         <button id="edge-close"><i class="mdi mdi-close"></i></button>
       </div>
       <div class="island-body">
-        <p id="edge-instruction" class="island-instruction">Click a source node, then click a target node to connect.</p>
-        <div class="island-section-title">Allowed connections</div>
-        <ul class="island-rule-list">
-          <li><code>agent</code> &rarr; <code>resource</code> (ha: has access)</li>
-          <li><code>resource</code> &rarr; <code>A</code> (ga: gives access)</li>
-          <li><code>A</code> &rarr; <code>resource</code> (ga: gives access)</li>
-        </ul>
-        <div class="island-section-title">Edge curve style</div>
-        <div class="edge-style-picker">
-          <button id="style-bezier" class="style-opt active" type="button">Curved</button>
-          <button id="style-taxi" class="style-opt" type="button">Elbow</button>
-          <button id="style-straight" class="style-opt" type="button">Straight</button>
+        <div class="island-section-title">Style</div>
+        <div class="island-btn-group">
+          <button id="style-bezier" class="island-group-btn active" type="button" title="Curved"><i class="mdi mdi-vector-curve"></i></button>
+          <button id="style-taxi" class="island-group-btn" type="button" title="Elbow"><i class="mdi mdi-vector-polyline"></i></button>
+          <button id="style-straight" class="island-group-btn" type="button" title="Straight"><i class="mdi mdi-vector-line"></i></button>
+        </div>
+
+        <div class="island-section-title">Type</div>
+        <div class="island-btn-group">
+          <button id="type-ha" class="island-group-btn active" type="button">HA</button>
+          <button id="type-ga" class="island-group-btn" type="button">GA</button>
+        </div>
+
+        <div class="island-section-title">Time</div>
+        <div class="island-time-row">
+          <input id="edge-time-from" class="island-time-input" type="text" value="inf">
+          <span>to</span>
+          <input id="edge-time-until" class="island-time-input" type="text" value="inf">
         </div>
       </div>
+    </div>
+
+    <div id="item-island" class="floating-island left-island" hidden>
+      <div class="island-header">
+        <strong id="item-island-title">Edit</strong>
+        <div class="island-header-actions">
+          <button id="item-island-duplicate" title="Duplicate (Cmd+D)"><i class="mdi mdi-content-copy"></i></button>
+          <button id="item-island-delete" title="Delete (Backspace)"><i class="mdi mdi-delete-outline"></i></button>
+          <button id="item-island-close"><i class="mdi mdi-close"></i></button>
+        </div>
+      </div>
+      <div id="item-island-body" class="island-body"></div>
     </div>
 
     <div id="issues-dialog" class="floating-island right-dialog" hidden>
@@ -85,6 +103,14 @@
     </div>
 
     <div id="graph"></div>
+    <svg id="edge-preview-svg" class="edge-preview-layer">
+      <defs>
+        <marker id="edge-preview-arrow" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M 0 1 L 10 5 L 0 9 z" fill="#2f6fed" />
+        </marker>
+      </defs>
+      <path id="edge-preview-path" d="" stroke="#2f6fed" stroke-width="2.5" fill="none" marker-end="url(#edge-preview-arrow)" hidden />
+    </svg>
   </div>
 
   <div id="modal-backdrop" class="modal-backdrop" hidden>

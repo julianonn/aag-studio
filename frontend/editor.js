@@ -28,12 +28,12 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
   const issuesCountEl = document.getElementById("issues-count");
   const violationsList = document.getElementById("violations-list");
 
-  const floatingToolbarEl = document.createElement("div");
-  floatingToolbarEl.className = "floating-toolbar";
-  floatingToolbarEl.hidden = true;
-  // Stop mousedown bubbling so Cytoscape does not treat toolbar interaction as a background tap
-  floatingToolbarEl.addEventListener("mousedown", (evt) => evt.stopPropagation());
-  document.getElementById("graph").append(floatingToolbarEl);
+  const itemIsland = document.getElementById("item-island");
+  const itemIslandTitle = document.getElementById("item-island-title");
+  const itemIslandBody = document.getElementById("item-island-body");
+  const itemIslandCloseBtn = document.getElementById("item-island-close");
+  const itemIslandDuplicateBtn = document.getElementById("item-island-duplicate");
+  const itemIslandDeleteBtn = document.getElementById("item-island-delete");
 
   const undoButton = document.getElementById("btn-undo");
   const redoButton = document.getElementById("btn-redo");
@@ -146,6 +146,7 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
       { selector: "node[kind = 'A']", style: { shape: "diamond", label: "A", width: GATE_NODE_SIZE, height: GATE_NODE_SIZE, padding: 0 } },
       { selector: "node[width]", style: { width: "data(width)", height: "data(height)" } },
       { selector: "node:selected", style: { "border-width": 3, "border-color": SELECTED_COLOR } },
+      { selector: "node.edge-hover", style: { "border-width": 3, "border-color": SELECTED_COLOR } },
       {
         selector: "edge",
         style: {
@@ -165,7 +166,7 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
   cy.center();
 
   function rerender() {
-    hideFloatingToolbar();
+    hideItemIsland();
     if (!Object.keys(positions).length && graph.vertices.length > 0) {
       Object.assign(positions, computeDefaultLayout(graph.vertices, graph.edges));
     }
@@ -217,6 +218,9 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
       });
     }
     debouncedSaveLayout();
+    if (activeSelectedItem) {
+      renderSelectedItemIsland();
+    }
   }
 
   const undoStack = [];
@@ -267,20 +271,23 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
     debouncedSaveLayout();
   }
 
-  async function tryAddEdge(sourceId, targetId, style = selectedEdgeStyle) {
+  async function tryAddEdge(sourceId, targetId, style = selectedEdgeStyle, type = selectedEdgeType, time = getSelectedEdgeTime()) {
     const existingIds = new Set(graph.edges.map((edge) => edge.id));
     const id = nextId(existingIds, "e");
     const sourceVertex = graph.vertices.find((vertex) => vertex.id === sourceId);
     const targetVertex = graph.vertices.find((vertex) => vertex.id === targetId);
     if (!sourceVertex || !targetVertex) return;
-    const label = inferredEdgeLabel(labelSet, sourceVertex.label, targetVertex.label);
+    const label = type || inferredEdgeLabel(labelSet, sourceVertex.label, targetVertex.label);
     if (!label) {
       await modalAlert(`no edge rule matches ${sourceVertex.label} -> ${targetVertex.label}`, "Invalid connection");
       return;
     }
     edgeStyles[id] = style;
-    const edge = { id, src: sourceId, tgt: targetId, label, time: [[0, null]] };
-    await applyGraph({ vertices: graph.vertices, edges: [...graph.edges, edge] });
+    const edge = { id, src: sourceId, tgt: targetId, label, time: time ?? [[0, null]] };
+    const ok = await applyGraph({ vertices: graph.vertices, edges: [...graph.edges, edge] });
+    if (ok) {
+      cy.getElementById(id).select();
+    }
     debouncedSaveLayout();
   }
 
@@ -329,15 +336,38 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
 
   async function tryDuplicateVertex(vertexId) {
     const original = graph.vertices.find((vertex) => vertex.id === vertexId);
+    if (!original) return;
     const id = nextId(new Set(graph.vertices.map((vertex) => vertex.id)), original.label);
     if (positions[vertexId]) positions[id] = [positions[vertexId][0] + DUPLICATE_OFFSET, positions[vertexId][1] + DUPLICATE_OFFSET];
-    await applyGraph({ vertices: [...graph.vertices, { ...original, id }], edges: graph.edges });
+    if (sizes[vertexId]) sizes[id] = [...sizes[vertexId]];
+    const ok = await applyGraph({ vertices: [...graph.vertices, { ...original, id }], edges: graph.edges });
+    if (ok) {
+      debouncedSaveLayout();
+      cy.getElementById(id).select();
+    }
   }
 
   async function tryDuplicateEdge(edgeId) {
     const original = graph.edges.find((edge) => edge.id === edgeId);
+    if (!original) return;
     const id = nextId(new Set(graph.edges.map((edge) => edge.id)), "e");
-    await applyGraph({ vertices: graph.vertices, edges: [...graph.edges, { ...original, id }] });
+    if (edgeStyles[edgeId]) edgeStyles[id] = edgeStyles[edgeId];
+    const ok = await applyGraph({ vertices: graph.vertices, edges: [...graph.edges, { ...original, id }] });
+    if (ok) {
+      debouncedSaveLayout();
+      cy.getElementById(id).select();
+    }
+  }
+
+  async function tryDuplicateSelected() {
+    const selected = cy.$(":selected");
+    if (selected.length === 0) return;
+    const el = selected[0];
+    if (el.isNode()) {
+      await tryDuplicateVertex(el.id());
+    } else if (el.isEdge()) {
+      await tryDuplicateEdge(el.id());
+    }
   }
 
   async function tryRenameVertex(oldId, newId) {
@@ -380,21 +410,25 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
       vertices: graph.vertices,
       edges: graph.edges.map((edge) => (edge.id === edgeId ? updated : edge)),
     });
+    debouncedSaveLayout();
   }
 
   const paletteIsland = document.getElementById("palette-island");
   const paletteCloseBtn = document.getElementById("palette-close");
   const edgeIsland = document.getElementById("edge-island");
   const edgeCloseBtn = document.getElementById("edge-close");
-  const edgeInstruction = document.getElementById("edge-instruction");
   const styleBezierBtn = document.getElementById("style-bezier");
   const styleTaxiBtn = document.getElementById("style-taxi");
   const styleStraightBtn = document.getElementById("style-straight");
+  const typeHaBtn = document.getElementById("type-ha");
+  const typeGaBtn = document.getElementById("type-ga");
+  const edgeTimeFromInput = document.getElementById("edge-time-from");
+  const edgeTimeUntilInput = document.getElementById("edge-time-until");
   const toolAddVertex = document.getElementById("tool-add-vertex");
   const toolAddEdge = document.getElementById("tool-add-edge");
 
   let selectedEdgeStyle = "bezier";
-  let edgeSourceNode = null;
+  let selectedEdgeType = "ha";
 
   function setEdgeCurveStyle(style) {
     selectedEdgeStyle = style;
@@ -406,16 +440,38 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
   styleTaxiBtn.onclick = () => setEdgeCurveStyle("taxi");
   styleStraightBtn.onclick = () => setEdgeCurveStyle("straight");
 
+  function setEdgeType(type) {
+    selectedEdgeType = type;
+    typeHaBtn.classList.toggle("active", type === "ha");
+    typeGaBtn.classList.toggle("active", type === "ga");
+  }
+  typeHaBtn.onclick = () => setEdgeType("ha");
+  typeGaBtn.onclick = () => setEdgeType("ga");
+
+  function parseTimeBound(val) {
+    const trimmed = (val ?? "").trim();
+    if (!trimmed || trimmed === "inf" || trimmed === "+inf" || trimmed === "-inf" || trimmed === "null") {
+      return trimmed === "inf" || trimmed === "+inf" || trimmed === "-inf" ? trimmed : null;
+    }
+    const num = Number(trimmed);
+    return Number.isNaN(num) ? trimmed : num;
+  }
+
+  function getSelectedEdgeTime() {
+    return [[parseTimeBound(edgeTimeFromInput.value), parseTimeBound(edgeTimeUntilInput.value)]];
+  }
+
   function closeAddPanels() {
     paletteIsland.hidden = true;
     edgeIsland.hidden = true;
+    itemIsland.hidden = true;
     toolAddVertex.classList.remove("active");
     toolAddEdge.classList.remove("active");
-    if (edgeSourceNode) {
-      edgeSourceNode.unselect();
-      edgeSourceNode = null;
+    clearEdgeHighlights();
+    hidePreviewLine();
+    if (activeMode === "edge") {
+      setMode("select");
     }
-    edgeInstruction.textContent = "Click a source node, then click a target node to connect.";
   }
 
   renderPalette(document.getElementById("palette-tree"), labelSet.vertex_labels, tryAddVertex);
@@ -431,11 +487,12 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
   paletteCloseBtn.onclick = closeAddPanels;
 
   toolAddEdge.onclick = () => {
-    const shouldOpen = edgeIsland.hidden;
-    closeAddPanels();
-    if (shouldOpen) {
+    if (activeMode === "edge") {
+      closeAddPanels();
+    } else {
+      closeAddPanels();
       edgeIsland.hidden = false;
-      toolAddEdge.classList.add("active");
+      setMode("edge");
     }
   };
   edgeCloseBtn.onclick = closeAddPanels;
@@ -475,22 +532,30 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
     hoverDelay: 0,
   });
 
+  let resizeStartState = null;
   attachSelectionHandles(cy, eh, document.getElementById("graph"), {
     onConnect: tryAddEdge,
     onReconnect: tryReconnectEdge,
+    onResizeStart: () => {
+      resizeStartState = snapshotState();
+    },
     onResize: (vertexId, width, height, x, y) => {
-      const oldSize = sizes[vertexId];
-      const oldPos = positions[vertexId];
-      const changed = !oldSize || oldSize[0] !== width || oldSize[1] !== height ||
-                      !oldPos || oldPos[0] !== x || oldPos[1] !== y;
-      if (changed) {
-        undoStack.push(snapshotState());
+      const prev = resizeStartState?.sizes[vertexId];
+      const prevPos = resizeStartState?.positions[vertexId];
+      const changed = !prev || prev[0] !== width || prev[1] !== height ||
+                      !prevPos || prevPos[0] !== x || prevPos[1] !== y;
+      sizes[vertexId] = [width, height];
+      positions[vertexId] = [x, y];
+      if (changed && resizeStartState) {
+        undoStack.push(resizeStartState);
         redoStack.length = 0;
         updateUndoRedoButtons();
       }
-      sizes[vertexId] = [width, height];
-      positions[vertexId] = [x, y];
+      resizeStartState = null;
       debouncedSaveLayout();
+      if (activeSelectedItem && activeSelectedItem.id() === vertexId) {
+        renderSelectedItemIsland();
+      }
     },
   });
 
@@ -519,20 +584,41 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
     edgeStyles[edgeId] = style;
     cy.getElementById(edgeId).data("curveStyle", style);
     debouncedSaveLayout();
+    if (activeSelectedItem && activeSelectedItem.id() === edgeId) {
+      renderSelectedItemIsland();
+    }
   }
 
-  let activeToolbarTarget = null;
+  let activeSelectedItem = null;
 
-  function positionFloatingToolbar(element) {
-    const box = element.renderedBoundingBox();
-    floatingToolbarEl.style.left = `${(box.x1 + box.x2) / 2}px`;
-    floatingToolbarEl.style.top = `${box.y1}px`;
+  function hideItemIsland() {
+    activeSelectedItem = null;
+    itemIsland.hidden = true;
+    itemIslandBody.replaceChildren();
   }
 
-  function hideFloatingToolbar() {
-    activeToolbarTarget = null;
-    floatingToolbarEl.hidden = true;
-  }
+  itemIslandCloseBtn.onclick = () => {
+    hideItemIsland();
+    cy.elements().unselect();
+  };
+
+  itemIslandDuplicateBtn.onclick = () => {
+    if (!activeSelectedItem) return;
+    if (activeSelectedItem.isNode()) {
+      tryDuplicateVertex(activeSelectedItem.id());
+    } else if (activeSelectedItem.isEdge()) {
+      tryDuplicateEdge(activeSelectedItem.id());
+    }
+  };
+
+  itemIslandDeleteBtn.onclick = () => {
+    if (!activeSelectedItem) return;
+    if (activeSelectedItem.isNode()) {
+      tryDeleteVertex(activeSelectedItem.id());
+    } else if (activeSelectedItem.isEdge()) {
+      tryDeleteEdge(activeSelectedItem.id());
+    }
+  };
 
   const ALL_VERTEX_LABELS = Object.keys(labelSet.vertex_labels).sort();
 
@@ -545,7 +631,7 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
     return row;
   }
 
-  function renderNodeMetadata(element) {
+  function renderNodeFields(element) {
     const nameInput = document.createElement("input");
     nameInput.value = element.id();
     nameInput.onchange = () => tryRenameVertex(element.id(), nameInput.value.trim());
@@ -563,12 +649,70 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
     return [labeledField("Name", nameInput), labeledField("Label", labelSelect)];
   }
 
-  function renderEdgeMetadata(element) {
+  function renderEdgeFields(element) {
     const edge = graph.edges.find((graphEdge) => graphEdge.id === element.id());
-    const heading = document.createElement("div");
-    heading.textContent = `${edge.label === "ha" ? "has access to" : "gives access to"} (${edge.label})`;
+    if (!edge) return [];
 
-    const list = document.createElement("ul");
+    const currentStyle = edgeStyles[edge.id] ?? "bezier";
+    const styleTitle = document.createElement("div");
+    styleTitle.className = "island-section-title";
+    styleTitle.textContent = "Style";
+
+    const styleGroup = document.createElement("div");
+    styleGroup.className = "island-btn-group";
+
+    const styles = [
+      { id: "bezier", title: "Curved", icon: "mdi-vector-curve" },
+      { id: "taxi", title: "Elbow", icon: "mdi-vector-polyline" },
+      { id: "straight", title: "Straight", icon: "mdi-vector-line" },
+    ];
+    for (const s of styles) {
+      const btn = document.createElement("button");
+      btn.className = `island-group-btn ${currentStyle === s.id ? "active" : ""}`;
+      btn.type = "button";
+      btn.title = s.title;
+      btn.innerHTML = `<i class="mdi ${s.icon}"></i>`;
+      btn.onclick = () => setEdgeStyle(edge.id, s.id);
+      styleGroup.append(btn);
+    }
+
+    const typeTitle = document.createElement("div");
+    typeTitle.className = "island-section-title";
+    typeTitle.textContent = "Type";
+
+    const typeGroup = document.createElement("div");
+    typeGroup.className = "island-btn-group";
+
+    const haBtn = document.createElement("button");
+    haBtn.className = `island-group-btn ${edge.label === "ha" ? "active" : ""}`;
+    haBtn.type = "button";
+    haBtn.textContent = "HA";
+    haBtn.onclick = async () => {
+      if (edge.label === "ha") return;
+      await applyGraph({
+        vertices: graph.vertices,
+        edges: graph.edges.map((e) => (e.id === edge.id ? { ...e, label: "ha" } : e)),
+      });
+    };
+
+    const gaBtn = document.createElement("button");
+    gaBtn.className = `island-group-btn ${edge.label === "ga" ? "active" : ""}`;
+    gaBtn.type = "button";
+    gaBtn.textContent = "GA";
+    gaBtn.onclick = async () => {
+      if (edge.label === "ga") return;
+      await applyGraph({
+        vertices: graph.vertices,
+        edges: graph.edges.map((e) => (e.id === edge.id ? { ...e, label: "ga" } : e)),
+      });
+    };
+    typeGroup.append(haBtn, gaBtn);
+
+    const timeTitle = document.createElement("div");
+    timeTitle.className = "island-section-title";
+    timeTitle.textContent = "Time";
+
+    const timeList = document.createElement("ul");
     edge.time.forEach((interval, intervalIndex) => {
       const li = document.createElement("li");
       const startInput = document.createElement("input");
@@ -578,7 +722,7 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
       endInput.value = interval[1] ?? "";
       endInput.placeholder = "open-ended";
       li.append(labeledField("From", startInput), labeledField("Until", endInput));
-      list.append(li);
+      timeList.append(li);
 
       async function commit() {
         const newInterval = [startInput.value === "" ? null : Number(startInput.value), endInput.value === "" ? null : Number(endInput.value)];
@@ -591,93 +735,33 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
       endInput.onchange = commit;
     });
 
-    return [heading, list];
+    return [styleTitle, styleGroup, typeTitle, typeGroup, timeTitle, timeList];
   }
 
-  function renderFloatingToolbar(element) {
-    activeToolbarTarget = element;
-    floatingToolbarEl.hidden = false;
-    positionFloatingToolbar(element);
-    floatingToolbarEl.replaceChildren();
-
-    const isNode = element.isNode();
-
-    const toolbarRow = document.createElement("div");
-    toolbarRow.className = "toolbar-row";
-
-    const duplicateButton = document.createElement("button");
-    duplicateButton.title = "Duplicate";
-    duplicateButton.innerHTML = '<i class="mdi mdi-content-copy"></i>';
-    duplicateButton.onclick = () => (isNode ? tryDuplicateVertex(element.id()) : tryDuplicateEdge(element.id()));
-
-    const deleteButton = document.createElement("button");
-    deleteButton.title = "Delete";
-    deleteButton.innerHTML = '<i class="mdi mdi-delete-outline"></i>';
-    deleteButton.onclick = () => (isNode ? tryDeleteVertex(element.id()) : tryDeleteEdge(element.id()));
-
-    const metadataEl = document.createElement("div");
-    metadataEl.hidden = true;
-    metadataEl.append(...(isNode ? renderNodeMetadata(element) : renderEdgeMetadata(element)));
-
-    const moreButton = document.createElement("button");
-    moreButton.title = "More";
-    moreButton.innerHTML = '<i class="mdi mdi-dots-vertical"></i>';
-    moreButton.onclick = () => {
-      const items = [{ label: "Edit metadata", onClick: () => (metadataEl.hidden = !metadataEl.hidden) }];
-      if (!isNode) {
-        items.push(
-          { label: "Straight edge", onClick: () => setEdgeStyle(element.id(), "straight") },
-          { label: "Elbow edge", onClick: () => setEdgeStyle(element.id(), "taxi") },
-          { label: "Curved edge", onClick: () => setEdgeStyle(element.id(), "bezier") }
-        );
-      }
-      const rect = moreButton.getBoundingClientRect();
-      showContextMenu(rect.left, rect.bottom, items);
-    };
-
-    toolbarRow.append(duplicateButton, deleteButton, moreButton);
-    floatingToolbarEl.append(toolbarRow, metadataEl);
-  }
-
-  cy.on("tap", "node, edge", (evt) => {
-    if (!edgeIsland.hidden && evt.target.isNode()) {
-      const clickedNode = evt.target;
-      if (!edgeSourceNode) {
-        edgeSourceNode = clickedNode;
-        clickedNode.select();
-        edgeInstruction.textContent = `Source: ${clickedNode.id()}. Now click target node.`;
-      } else {
-        const sourceId = edgeSourceNode.id();
-        const targetId = clickedNode.id();
-        edgeSourceNode.unselect();
-        edgeSourceNode = null;
-        edgeInstruction.textContent = "Click a source node, then click a target node to connect.";
-        tryAddEdge(sourceId, targetId, selectedEdgeStyle);
-      }
+  function renderSelectedItemIsland() {
+    const selected = cy.$(":selected");
+    if (selected.length !== 1) {
+      hideItemIsland();
       return;
     }
+    const element = selected[0];
+    activeSelectedItem = element;
 
-    if (cy.$(":selected").length <= 1) {
-      renderFloatingToolbar(evt.target);
-    } else {
-      hideFloatingToolbar();
-    }
-  });
-  cy.on("tap", (evt) => {
-    if (evt.target === cy) {
-      hideFloatingToolbar();
-      if (edgeSourceNode) {
-        edgeSourceNode.unselect();
-        edgeSourceNode = null;
-        edgeInstruction.textContent = "Click a source node, then click a target node to connect.";
-      }
-    }
-  });
-  cy.on("pan zoom position", () => {
-    if (activeToolbarTarget) positionFloatingToolbar(activeToolbarTarget);
-  });
-  window.addEventListener("resize", () => {
-    if (activeToolbarTarget) positionFloatingToolbar(activeToolbarTarget);
+    // Close any other open add panels so left side is clean
+    paletteIsland.hidden = true;
+    edgeIsland.hidden = true;
+    toolAddVertex.classList.remove("active");
+    toolAddEdge.classList.remove("active");
+
+    const isNode = element.isNode();
+    itemIslandTitle.textContent = isNode ? "Vertex" : "Edge";
+    itemIslandBody.replaceChildren(...(isNode ? renderNodeFields(element) : renderEdgeFields(element)));
+    itemIsland.hidden = false;
+  }
+
+  cy.on("select unselect", () => {
+    if (activeMode === "edge") return;
+    renderSelectedItemIsland();
   });
 
   let lastStateBeforeDrag = null;
@@ -712,35 +796,178 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
   const graphEl = document.getElementById("graph");
   const toolSelectBtn = document.getElementById("tool-select");
   const toolPanBtn = document.getElementById("tool-pan");
+  const previewPath = document.getElementById("edge-preview-path");
   let activeMode = "pan";
   let spacePressed = false;
 
+  function getNodeAt(clientX, clientY) {
+    const rect = graphEl.getBoundingClientRect();
+    const rx = clientX - rect.left;
+    const ry = clientY - rect.top;
+    const nodes = cy.nodes();
+    for (let i = nodes.length - 1; i >= 0; i--) {
+      const box = nodes[i].renderedBoundingBox();
+      if (rx >= box.x1 && rx <= box.x2 && ry >= box.y1 && ry <= box.y2) {
+        return nodes[i];
+      }
+    }
+    return null;
+  }
+
+  function drawPreviewLine(x1, y1, x2, y2, style) {
+    let d = "";
+    if (style === "straight") {
+      d = `M ${x1} ${y1} L ${x2} ${y2}`;
+    } else if (style === "taxi") {
+      const midX = (x1 + x2) / 2;
+      d = `M ${x1} ${y1} L ${midX} ${y1} L ${midX} ${y2} L ${x2} ${y2}`;
+    } else {
+      const dx = x2 - x1;
+      const dy = y2 - y1;
+      const cx = (x1 + x2) / 2 - dy * 0.15;
+      const cyPt = (y1 + y2) / 2 + dx * 0.15;
+      d = `M ${x1} ${y1} Q ${cx} ${cyPt} ${x2} ${y2}`;
+    }
+    previewPath.setAttribute("d", d);
+    previewPath.hidden = false;
+  }
+
+  function hidePreviewLine() {
+    if (previewPath) {
+      previewPath.hidden = true;
+      previewPath.setAttribute("d", "");
+    }
+  }
+
+  let edgeDragSource = null;
+  let edgeDragTarget = null;
+  let hoveredNode = null;
+  let isDraggingEdge = false;
+
+  function clearEdgeHighlights() {
+    if (edgeDragSource) edgeDragSource.removeClass("edge-hover");
+    if (edgeDragTarget) edgeDragTarget.removeClass("edge-hover");
+    if (hoveredNode) hoveredNode.removeClass("edge-hover");
+    edgeDragSource = null;
+    edgeDragTarget = null;
+    hoveredNode = null;
+  }
+
+  graphEl.addEventListener("pointerdown", (evt) => {
+    if (activeMode !== "edge") return;
+    if (evt.button !== 0) return;
+    const node = getNodeAt(evt.clientX, evt.clientY);
+    if (!node) return;
+
+    evt.preventDefault();
+    evt.stopPropagation();
+    isDraggingEdge = true;
+    edgeDragSource = node;
+    node.addClass("edge-hover");
+    cy.elements().unselect();
+    hideFloatingToolbar();
+  });
+
+  window.addEventListener("pointermove", (evt) => {
+    if (activeMode !== "edge") return;
+
+    if (isDraggingEdge && edgeDragSource) {
+      evt.preventDefault();
+      const rect = graphEl.getBoundingClientRect();
+      const curX = evt.clientX - rect.left;
+      const curY = evt.clientY - rect.top;
+
+      const srcBox = edgeDragSource.renderedBoundingBox();
+      const x1 = (srcBox.x1 + srcBox.x2) / 2;
+      const y1 = (srcBox.y1 + srcBox.y2) / 2;
+
+      const hit = getNodeAt(evt.clientX, evt.clientY);
+      if (hit && hit.id() !== edgeDragSource.id()) {
+        if (edgeDragTarget && edgeDragTarget.id() !== hit.id()) {
+          edgeDragTarget.removeClass("edge-hover");
+        }
+        hit.addClass("edge-hover");
+        edgeDragTarget = hit;
+        const tgtBox = hit.renderedBoundingBox();
+        const x2 = (tgtBox.x1 + tgtBox.x2) / 2;
+        const y2 = (tgtBox.y1 + tgtBox.y2) / 2;
+        drawPreviewLine(x1, y1, x2, y2, selectedEdgeStyle);
+      } else {
+        if (edgeDragTarget) {
+          edgeDragTarget.removeClass("edge-hover");
+          edgeDragTarget = null;
+        }
+        drawPreviewLine(x1, y1, curX, curY, selectedEdgeStyle);
+      }
+    } else {
+      const hit = getNodeAt(evt.clientX, evt.clientY);
+      if (hit !== hoveredNode) {
+        if (hoveredNode) hoveredNode.removeClass("edge-hover");
+        if (hit) {
+          cy.elements().unselect();
+          hit.addClass("edge-hover");
+        }
+        hoveredNode = hit;
+      }
+    }
+  });
+
+  window.addEventListener("pointerup", (evt) => {
+    if (!isDraggingEdge) return;
+    isDraggingEdge = false;
+    hidePreviewLine();
+
+    const src = edgeDragSource;
+    const tgt = edgeDragTarget;
+    clearEdgeHighlights();
+
+    if (src && tgt && src.id() !== tgt.id()) {
+      tryAddEdge(src.id(), tgt.id(), selectedEdgeStyle, selectedEdgeType, getSelectedEdgeTime());
+      closeAddPanels();
+    }
+  });
+
   function applyMode() {
     const isPan = spacePressed || activeMode === "pan";
+    const isEdge = activeMode === "edge";
     cy.userPanningEnabled(isPan);
-    cy.boxSelectionEnabled(!isPan);
+    cy.boxSelectionEnabled(!isPan && !isEdge);
+    cy.autoungrabify(isEdge);
     graphEl.classList.toggle("mode-pan", isPan);
-    graphEl.classList.toggle("mode-select", !isPan);
+    graphEl.classList.toggle("mode-select", !isPan && !isEdge);
+    graphEl.classList.toggle("mode-edge", isEdge && !spacePressed);
   }
 
   function setMode(mode) {
     activeMode = mode;
     toolSelectBtn.classList.toggle("active", mode === "select");
     toolPanBtn.classList.toggle("active", mode === "pan");
+    toolAddEdge.classList.toggle("active", mode === "edge");
+    if (mode !== "edge") {
+      clearEdgeHighlights();
+      hidePreviewLine();
+    }
     applyMode();
   }
 
-  toolSelectBtn.onclick = () => setMode("select");
-  toolPanBtn.onclick = () => setMode("pan");
+  toolSelectBtn.onclick = () => {
+    closeAddPanels();
+    setMode("select");
+  };
+  toolPanBtn.onclick = () => {
+    closeAddPanels();
+    setMode("pan");
+  };
   setMode("pan");
 
   const detachKeyboardShortcuts = attachKeyboardShortcuts({
     cy,
     onUndo: () => undoButton.click(),
     onRedo: () => redoButton.click(),
+    onDuplicate: tryDuplicateSelected,
     onDelete: tryDeleteSelected,
     onEscape: () => {
-      hideFloatingToolbar();
+      hideItemIsland();
       cy.elements().unselect();
       hamburgerMenu.hidden = true;
       closeAddPanels();
