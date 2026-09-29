@@ -1,10 +1,10 @@
 import { CanvasSvg } from "./canvas-svg.js";
-import { renderPalette, populateUniformLabelSelect } from "./palette.js";
+import { AUTOSAVE_DEBOUNCE_MS, BASE_ZOOM, DUPLICATE_OFFSET } from "./constants.js";
 import { showContextMenu } from "./contextmenu.js";
-import { topLevelKind, inferredEdgeLabel, nextId, validateGraph, debounce, computeDefaultLayout } from "./graph-utils.js";
+import { computeDefaultLayout, debounce, inferredEdgeLabel, nextId, validateGraph } from "./graph-utils.js";
 import { attachKeyboardShortcuts } from "./keyboard-shortcuts.js";
-import { AUTOSAVE_DEBOUNCE_MS, DUPLICATE_OFFSET, BASE_ZOOM } from "./constants.js";
 import { modalAlert, modalPrompt } from "./modal.js";
+import { renderPalette } from "./palette.js";
 
 export async function openEditor(graphName, labelSet, { onExit, onRename }) {
   let graphRes;
@@ -797,7 +797,7 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
     canvas.clearSelection();
   };
 
-  const ALL_VERTEX_LABELS = Object.keys(labelSet.vertex_labels).sort();
+  const _ALL_VERTEX_LABELS = Object.keys(labelSet.vertex_labels).sort();
 
   function labeledField(labelText, inputEl) {
     const row = document.createElement("div");

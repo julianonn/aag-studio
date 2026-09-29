@@ -1,4 +1,4 @@
-import { MIN_NODE_SIZE, GATE_NODE_SIZE, BASE_ZOOM } from "./constants.js";
+import { BASE_ZOOM, GATE_NODE_SIZE, MIN_NODE_SIZE } from "./constants.js";
 import { topLevelKind } from "./graph-utils.js";
 
 const rootStyle = getComputedStyle(document.documentElement);
@@ -1141,7 +1141,7 @@ export class CanvasSvg {
     }
   }
 
-  handlePointerUp(evt) {
+  handlePointerUp(_evt) {
     if (this.isPanning) {
       this.isPanning = false;
       this.svg.classList.remove("panning");
