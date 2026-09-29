@@ -20,6 +20,16 @@ FRONTEND_DIR = REPO_ROOT / "frontend"
 app = FastAPI()
 
 
+@app.middleware("http")
+async def no_browser_cache(request, call_next):
+    # Without this, the browser can reuse a stale cached copy of a static
+    # file (frontend/*.js, vendor/*) indefinitely without even asking the
+    # server, so an edit to those files silently doesn't take effect.
+    response = await call_next(request)
+    response.headers["Cache-Control"] = "no-cache"
+    return response
+
+
 def _graph_path(name: str) -> Path:
     if "/" in name or "\\" in name or name in (".", ".."):
         raise HTTPException(status_code=400, detail=f"invalid graph name: {name}")

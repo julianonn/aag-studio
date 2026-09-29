@@ -1,15 +1,18 @@
-// A minimal right-click/two-finger-tap menu. Both gestures fire the same
-// browser contextmenu event, and Cytoscape's own cxttap mirrors it, so one
-// implementation covers both.
+// A toolbar-button click bubbles to document (unlike right-click's
+// synthetic cxttap), so the close-on-outside-click listener is deferred
+// past the current click or it closes the menu it just opened.
 
 let openMenuEl = null;
+let outsideClickListener = null;
 
 function closeMenu() {
   openMenuEl?.remove();
   openMenuEl = null;
+  if (outsideClickListener) {
+    document.removeEventListener("click", outsideClickListener);
+    outsideClickListener = null;
+  }
 }
-
-document.addEventListener("click", closeMenu);
 
 export function showContextMenu(x, y, items) {
   closeMenu();
@@ -28,4 +31,8 @@ export function showContextMenu(x, y, items) {
   }
   document.body.append(menu);
   openMenuEl = menu;
+  setTimeout(() => {
+    outsideClickListener = closeMenu;
+    document.addEventListener("click", outsideClickListener);
+  }, 0);
 }

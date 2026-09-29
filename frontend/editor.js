@@ -1,6 +1,4 @@
-// The graph editor: canvas render, palette, typed edge tool, context menu,
-// properties panel and the validation panel. Selection/hover overlays
-// (connect arrows, reconnect handles, resize handles) live in selection-handles.js.
+// The graph editor. Selection/hover overlays live in selection-handles.js.
 
 import { renderPalette } from "./palette.js";
 import { showContextMenu } from "./contextmenu.js";
@@ -30,7 +28,21 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
   const propertiesEl = document.createElement("div");
   propertiesEl.className = "floating-toolbar";
   propertiesEl.hidden = true;
+  // Without this, clicking a button in here reads to Cytoscape as a
+  // background tap and deselects everything (same fix as the resize/connect handles).
+  propertiesEl.addEventListener("mousedown", (evt) => evt.stopPropagation());
   document.getElementById("graph").append(propertiesEl);
+
+  const undoButton = document.createElement("button");
+  undoButton.title = "Undo";
+  undoButton.append(icon("undo"));
+  const redoButton = document.createElement("button");
+  redoButton.title = "Redo";
+  redoButton.append(icon("redo"));
+  const undoRedoEl = document.createElement("div");
+  undoRedoEl.id = "undo-redo";
+  undoRedoEl.append(undoButton, redoButton);
+  document.getElementById("graph").append(undoRedoEl);
 
   function saveGraph() {
     fetch(`/api/graphs/${graphName}`, {
@@ -91,6 +103,7 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
     elements: elementsFromGraph(),
     layout: Object.keys(positions).length ? { name: "preset" } : { name: "breadthfirst" },
     style: [
+      { selector: "core", style: { "active-bg-opacity": 0 } },
       {
         selector: "node",
         style: {
@@ -133,11 +146,24 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
     if (!Object.keys(positions).length) cy.layout({ name: "breadthfirst" }).run();
   }
 
-  async function applyGraph(candidate) {
+  const undoStack = [];
+  const redoStack = [];
+
+  function updateUndoRedoButtons() {
+    undoButton.disabled = undoStack.length === 0;
+    redoButton.disabled = redoStack.length === 0;
+  }
+
+  async function applyGraph(candidate, { recordHistory = true } = {}) {
     const violations = await validateGraph(candidate);
     if (violations.length) {
       alert(violations.join("\n"));
       return false;
+    }
+    if (recordHistory) {
+      undoStack.push(graph);
+      redoStack.length = 0;
+      updateUndoRedoButtons();
     }
     graph = candidate;
     rerender();
@@ -145,6 +171,20 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
     debouncedSaveGraph();
     return true;
   }
+
+  undoButton.onclick = async () => {
+    if (undoStack.length === 0) return;
+    redoStack.push(graph);
+    await applyGraph(undoStack.pop(), { recordHistory: false });
+    updateUndoRedoButtons();
+  };
+  redoButton.onclick = async () => {
+    if (redoStack.length === 0) return;
+    undoStack.push(graph);
+    await applyGraph(redoStack.pop(), { recordHistory: false });
+    updateUndoRedoButtons();
+  };
+  updateUndoRedoButtons();
 
   async function tryAddVertex(label) {
     const id = nextId(new Set(graph.vertices.map((v) => v.id)), label);
@@ -174,6 +214,19 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
 
   async function tryDeleteEdge(edgeId) {
     await applyGraph({ vertices: graph.vertices, edges: graph.edges.filter((e) => e.id !== edgeId) });
+  }
+
+  async function tryDuplicateVertex(vertexId) {
+    const original = graph.vertices.find((v) => v.id === vertexId);
+    const id = nextId(new Set(graph.vertices.map((v) => v.id)), original.label);
+    if (positions[vertexId]) positions[id] = [positions[vertexId][0] + 30, positions[vertexId][1] + 30];
+    await applyGraph({ vertices: [...graph.vertices, { ...original, id }], edges: graph.edges });
+  }
+
+  async function tryDuplicateEdge(edgeId) {
+    const original = graph.edges.find((e) => e.id === edgeId);
+    const id = nextId(new Set(graph.edges.map((e) => e.id)), "e");
+    await applyGraph({ vertices: graph.vertices, edges: [...graph.edges, { ...original, id }] });
   }
 
   async function tryRenameVertex(oldId, newId) {
@@ -220,9 +273,7 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
 
   renderPalette(document.getElementById("panel-add"), labelSet.vertex_labels, tryAddVertex);
 
-  // Left sidebar: a thin icon strip always visible; clicking an icon opens
-  // its panel next to the strip, clicking it again (or another icon)
-  // collapses back to just the strip — only one panel open at a time.
+  // Only one of panels.{add,issues,info} is open at a time.
   const editorEl = document.getElementById("editor");
   const sidePanelEl = document.getElementById("side-panel");
   const panels = {
@@ -334,35 +385,28 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
     return row;
   }
 
-  function renderProperties(element) {
-    propertiesTarget = element;
-    propertiesEl.hidden = false;
-    positionPropertiesToolbar(element);
-    propertiesEl.replaceChildren();
+  function renderNodeMetadata(element) {
+    const nameInput = document.createElement("input");
+    nameInput.value = element.id();
+    nameInput.onchange = () => tryRenameVertex(element.id(), nameInput.value.trim());
 
-    if (element.isNode()) {
-      const nameInput = document.createElement("input");
-      nameInput.value = element.id();
-      nameInput.onchange = () => tryRenameVertex(element.id(), nameInput.value.trim());
-
-      const categorySelect = document.createElement("select");
-      for (const label of ALL_VERTEX_LABELS) {
-        const option = document.createElement("option");
-        option.value = label;
-        option.textContent = label;
-        option.selected = label === element.data("label");
-        categorySelect.append(option);
-      }
-      categorySelect.onchange = () => tryChangeVertexCategory(element.id(), categorySelect.value);
-
-      propertiesEl.append(labeledField("Name", nameInput), labeledField("Category", categorySelect));
-      return;
+    const categorySelect = document.createElement("select");
+    for (const label of ALL_VERTEX_LABELS) {
+      const option = document.createElement("option");
+      option.value = label;
+      option.textContent = label;
+      option.selected = label === element.data("label");
+      categorySelect.append(option);
     }
+    categorySelect.onchange = () => tryChangeVertexCategory(element.id(), categorySelect.value);
 
+    return [labeledField("Name", nameInput), labeledField("Category", categorySelect)];
+  }
+
+  function renderEdgeMetadata(element) {
     const edge = graph.edges.find((e) => e.id === element.id());
     const heading = document.createElement("div");
     heading.textContent = `${edge.label === "ha" ? "has access to" : "gives access to"} (${edge.label})`;
-    propertiesEl.append(heading);
 
     const list = document.createElement("ul");
     edge.time.forEach((interval, index) => {
@@ -386,7 +430,53 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
       start.onchange = commit;
       end.onchange = commit;
     });
-    propertiesEl.append(list);
+
+    return [heading, list];
+  }
+
+  function renderProperties(element) {
+    propertiesTarget = element;
+    propertiesEl.hidden = false;
+    positionPropertiesToolbar(element);
+    propertiesEl.replaceChildren();
+
+    const isNode = element.isNode();
+
+    const toolbarRow = document.createElement("div");
+    toolbarRow.className = "toolbar-row";
+
+    const duplicateButton = document.createElement("button");
+    duplicateButton.title = "Duplicate";
+    duplicateButton.append(icon("duplicate"));
+    duplicateButton.onclick = () => (isNode ? tryDuplicateVertex(element.id()) : tryDuplicateEdge(element.id()));
+
+    const deleteButton = document.createElement("button");
+    deleteButton.title = "Delete";
+    deleteButton.append(icon("delete"));
+    deleteButton.onclick = () => (isNode ? tryDeleteVertex(element.id()) : tryDeleteEdge(element.id()));
+
+    const metadataEl = document.createElement("div");
+    metadataEl.hidden = true;
+    metadataEl.append(...(isNode ? renderNodeMetadata(element) : renderEdgeMetadata(element)));
+
+    const moreButton = document.createElement("button");
+    moreButton.title = "More";
+    moreButton.append(icon("dots-vertical"));
+    moreButton.onclick = () => {
+      const items = [{ label: "Edit metadata", onClick: () => (metadataEl.hidden = !metadataEl.hidden) }];
+      if (!isNode) {
+        items.push(
+          { label: "Straight edge", onClick: () => setEdgeStyle(element.id(), "straight") },
+          { label: "Elbow edge", onClick: () => setEdgeStyle(element.id(), "taxi") },
+          { label: "Curved edge", onClick: () => setEdgeStyle(element.id(), "bezier") }
+        );
+      }
+      const rect = moreButton.getBoundingClientRect();
+      showContextMenu(rect.left, rect.bottom, items);
+    };
+
+    toolbarRow.append(duplicateButton, deleteButton, moreButton);
+    propertiesEl.append(toolbarRow, metadataEl);
   }
 
   cy.on("tap", "node, edge", (evt) => renderProperties(evt.target));

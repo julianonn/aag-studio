@@ -1,8 +1,5 @@
-// Floating overlays synced to the selected/hovered element's on-screen
-// position: 4 connect arrows on hover, 2 reconnect handles on a selected
-// edge, 4 resize handles on a selected node. Same technique for all three
-// (position a div via node.renderedPosition()/renderedBoundingBox(), keep
-// it in sync on pan/zoom/position) so they behave and look consistent.
+// Connect arrows, reconnect handles, resize handles: all positioned the
+// same way (a div synced to node.renderedBoundingBox() on pan/zoom).
 
 const MIN_NODE_SIZE = 24;
 
@@ -36,14 +33,10 @@ export function attachSelectionHandles(cy, eh, containerEl, { onConnect, onRecon
   let hoveredNode = null;
   let dragging = false;
 
-  // cytoscape-edgehandles normally drives itself off Cytoscape's internal
-  // tapdrag/tapend gesture events, which only fire for a drag that started
-  // on the canvas — a drag starting on our overlay handles never reaches
-  // that. We call eh.start()/update() by hand purely for the ghost-line
-  // visual; whether a valid drop happened is decided ourselves from the
-  // same hover tracking the connect arrows already use (eh's own
-  // preview/stop-driven completion turned out to be unreliable when driven
-  // this way, so onComplete below is the actual source of truth).
+  // eh.start()/update() only draws the ghost line here — its own
+  // preview/stop completion is unreliable when driven outside a real
+  // canvas drag, so onComplete below (from our own hover tracking) is
+  // what actually decides whether a drop happened.
   function driveEdgeGesture(sourceNode, onComplete) {
     dragging = true;
     eh.start(sourceNode);
@@ -65,7 +58,6 @@ export function attachSelectionHandles(cy, eh, containerEl, { onConnect, onRecon
     document.addEventListener("mouseup", onMouseUp);
   }
 
-  // 4-directional connect arrows on node hover.
   const connectHandles = { top: makeDot(containerEl), right: makeDot(containerEl), bottom: makeDot(containerEl), left: makeDot(containerEl) };
 
   function positionConnectHandles(node) {
@@ -168,8 +160,7 @@ export function attachSelectionHandles(cy, eh, containerEl, { onConnect, onRecon
     });
   });
 
-  // Resize handles at a selected node's 4 corners. Dragging one keeps the
-  // diagonally opposite corner fixed, matching the usual resize-box convention.
+  // Dragging a corner keeps the diagonally opposite corner fixed.
   const resizeHandles = { tl: makeResizeHandle(containerEl, "tl"), tr: makeResizeHandle(containerEl, "tr"), bl: makeResizeHandle(containerEl, "bl"), br: makeResizeHandle(containerEl, "br") };
   let selectedNode = null;
 

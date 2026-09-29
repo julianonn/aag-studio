@@ -20,7 +20,9 @@
 }
 
 html, body { margin: 0; height: 100%; font-family: sans-serif; font-size: 14px; }
-button, input, select { font: inherit; }
+button, input, select { font: inherit; -webkit-tap-highlight-color: transparent; }
+button { outline: none; box-shadow: none; }
+button:focus, button:focus-visible, button:active { outline: none; box-shadow: none; }
 
 #library { padding: 16px; max-width: 500px; }
 #graph-list { list-style: none; padding: 0; }
@@ -28,7 +30,7 @@ button, input, select { font: inherit; }
 
 #editor { display: grid; grid-template-columns: 72px 1fr; height: 100%; }
 #editor.panel-open { grid-template-columns: 72px 220px 1fr; }
-#graph { height: 100%; position: relative; }
+#graph { height: 100%; min-width: 0; position: relative; overflow: hidden; }
 
 #icon-strip { display: flex; flex-direction: column; align-items: stretch; padding-top: 8px; border-right: 1px solid var(--color-border); }
 #icon-strip #back-to-library { border-bottom: 1px solid var(--color-border); border-radius: 0; margin-bottom: 8px; padding-bottom: 14px; }
@@ -79,11 +81,23 @@ button { text-align: left; margin: 2px 0; }
   box-shadow: 0 2px 8px var(--color-menu-shadow); white-space: nowrap;
 }
 .floating-toolbar ul { list-style: none; padding: 0; margin: 4px 0 0; }
+.toolbar-row { display: flex; gap: 2px; }
+.toolbar-row button { border: none; background: none; cursor: pointer; padding: 4px; border-radius: 4px; margin: 0; }
+.toolbar-row button:hover { background: var(--color-menu-border); }
 .field-row { display: flex; align-items: center; gap: 6px; margin: 4px 0; }
 .floating-toolbar label { color: var(--color-toolbar-label); font-size: 11px; }
 .floating-toolbar input, .floating-toolbar select {
   border: 1px solid var(--color-border); border-radius: 4px; padding: 2px 4px; font-size: 12px;
 }
 .floating-toolbar input { width: 70px; }
+
+#undo-redo {
+  position: absolute; top: 12px; right: 12px; display: flex; gap: 4px; z-index: 20;
+  background: var(--color-menu-bg); border: 1px solid var(--color-menu-border); border-radius: 6px;
+  box-shadow: 0 1px 4px var(--color-menu-shadow); padding: 4px;
+}
+#undo-redo button { border: none; background: none; cursor: pointer; padding: 4px; border-radius: 4px; margin: 0; }
+#undo-redo button:hover:not(:disabled) { background: var(--color-menu-border); }
+#undo-redo button:disabled { opacity: 0.3; cursor: default; }
 
 [hidden] { display: none !important; }
