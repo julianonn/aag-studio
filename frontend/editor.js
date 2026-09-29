@@ -3,7 +3,7 @@
 import { renderPalette } from "./palette.js";
 import { showContextMenu } from "./contextmenu.js";
 import { attachSelectionHandles } from "./selection-handles.js";
-import { topLevelKind, inferredEdgeLabel, nextId, validateGraph, debounce } from "./graph-utils.js";
+import { topLevelKind, inferredEdgeLabel, nextId, validateGraph, debounce, computeDefaultLayout } from "./graph-utils.js";
 import { icon } from "./icons.js";
 import { AUTOSAVE_DEBOUNCE_MS, DUPLICATE_OFFSET, GATE_NODE_SIZE } from "./constants.js";
 
@@ -20,6 +20,9 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
   let graph = await fetch(`/api/graphs/${graphName}`).then((response) => response.json());
   const rawLayout = await fetch(`/api/graphs/${graphName}/layout`).then((response) => response.json());
   const positions = rawLayout.positions ?? {};
+  if (!Object.keys(positions).length && graph.vertices.length > 0) {
+    Object.assign(positions, computeDefaultLayout(graph.vertices, graph.edges));
+  }
   const edgeStyles = rawLayout.edge_styles ?? {};
   const sizes = rawLayout.sizes ?? {};
 
@@ -143,7 +146,10 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
     hideFloatingToolbar();
     cy.elements().remove();
     cy.add(elementsFromGraph());
-    if (!Object.keys(positions).length) cy.layout({ name: "breadthfirst" }).run();
+    if (!Object.keys(positions).length && graph.vertices.length > 0) {
+      Object.assign(positions, computeDefaultLayout(graph.vertices, graph.edges));
+      cy.layout({ name: "preset" }).run();
+    }
   }
 
   const undoStack = [];

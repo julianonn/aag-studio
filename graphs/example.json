@@ -31,18 +31,6 @@
   ],
   "edges": [
     {
-      "id": "e1",
-      "src": "usr",
-      "tgt": "my_phone",
-      "label": "ha",
-      "time": [
-        [
-          0,
-          null
-        ]
-      ]
-    },
-    {
       "id": "e2",
       "src": "usr",
       "tgt": "iphone_passcode",

@@ -102,12 +102,12 @@ export function attachSelectionHandles(cy, eh, containerEl, { onConnect, onRecon
   let selectedEdge = null;
 
   function positionReconnectHandles(edge) {
-    const srcPos = cy.getElementById(edge.data("source")).renderedPosition();
-    const tgtPos = cy.getElementById(edge.data("target")).renderedPosition();
-    sourceHandle.style.left = `${srcPos.x}px`;
-    sourceHandle.style.top = `${srcPos.y}px`;
-    targetHandle.style.left = `${tgtPos.x}px`;
-    targetHandle.style.top = `${tgtPos.y}px`;
+    const srcEndpoint = edge.renderedSourceEndpoint();
+    const tgtEndpoint = edge.renderedTargetEndpoint();
+    sourceHandle.style.left = `${srcEndpoint.x}px`;
+    sourceHandle.style.top = `${srcEndpoint.y}px`;
+    targetHandle.style.left = `${tgtEndpoint.x}px`;
+    targetHandle.style.top = `${tgtEndpoint.y}px`;
   }
 
   cy.on("select", "edge", (evt) => {
