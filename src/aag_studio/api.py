@@ -63,7 +63,7 @@ def list_graphs() -> list[dict]:
         graphs.append(
             {
                 "name": path.stem,
-                "created": _read_layout(path.stem)["created"],
+                "created": _read_layout(path.stem).get("created", path.stat().st_ctime),
                 "modified": path.stat().st_mtime,
             }
         )

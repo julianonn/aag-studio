@@ -1,7 +1,4 @@
-// Connect arrows, reconnect handles, resize handles: all positioned the
-// same way (a div synced to node.renderedBoundingBox() on pan/zoom).
-
-const MIN_NODE_SIZE = 24;
+import { MIN_NODE_SIZE } from "./constants.js";
 
 function screenToModel(cy, containerEl, clientX, clientY) {
   const rect = containerEl.getBoundingClientRect();
@@ -10,7 +7,7 @@ function screenToModel(cy, containerEl, clientX, clientY) {
   return { x: (clientX - rect.left - pan.x) / zoom, y: (clientY - rect.top - pan.y) / zoom };
 }
 
-function makeDot(container) {
+function createConnectionHandle(container) {
   const el = document.createElement("div");
   el.className = "edge-handle";
   el.hidden = true;
@@ -27,16 +24,10 @@ function makeResizeHandle(container, corner) {
 }
 
 export function attachSelectionHandles(cy, eh, containerEl, { onConnect, onReconnect, onResize }) {
-  // Cytoscape's own node hover tracking (mouseover/mouseout) already does
-  // accurate hit-testing, so the drag driver below reuses it as its drop
-  // target signal instead of re-implementing hit-testing by hand.
   let hoveredNode = null;
   let dragging = false;
 
-  // eh.start()/update() only draws the ghost line here — its own
-  // preview/stop completion is unreliable when driven outside a real
-  // canvas drag, so onComplete below (from our own hover tracking) is
-  // what actually decides whether a drop happened.
+  // edgehandles only draws the line; drop target is tracked via node mouseover
   function driveEdgeGesture(sourceNode, onComplete) {
     dragging = true;
     eh.start(sourceNode);
@@ -58,7 +49,7 @@ export function attachSelectionHandles(cy, eh, containerEl, { onConnect, onRecon
     document.addEventListener("mouseup", onMouseUp);
   }
 
-  const connectHandles = { top: makeDot(containerEl), right: makeDot(containerEl), bottom: makeDot(containerEl), left: makeDot(containerEl) };
+  const connectHandles = { top: createConnectionHandle(containerEl), right: createConnectionHandle(containerEl), bottom: createConnectionHandle(containerEl), left: createConnectionHandle(containerEl) };
 
   function positionConnectHandles(node) {
     const box = node.renderedBoundingBox();
@@ -105,12 +96,9 @@ export function attachSelectionHandles(cy, eh, containerEl, { onConnect, onRecon
     });
   }
 
-  // Reconnect handles at a selected edge's two endpoints. edgehandles can
-  // only start a drag from a fixed source toward a dropped target, so to
-  // move the *source* end (target fixed) we anchor on the target instead
-  // and swap direction in onReconnect.
-  const sourceHandle = makeDot(containerEl);
-  const targetHandle = makeDot(containerEl);
+  // edgehandles drags source -> target; to move the source end, anchor on target and swap endpoints on reconnect
+  const sourceHandle = createConnectionHandle(containerEl);
+  const targetHandle = createConnectionHandle(containerEl);
   let selectedEdge = null;
 
   function positionReconnectHandles(edge) {
@@ -160,7 +148,6 @@ export function attachSelectionHandles(cy, eh, containerEl, { onConnect, onRecon
     });
   });
 
-  // Dragging a corner keeps the diagonally opposite corner fixed.
   const resizeHandles = { tl: makeResizeHandle(containerEl, "tl"), tr: makeResizeHandle(containerEl, "tr"), bl: makeResizeHandle(containerEl, "bl"), br: makeResizeHandle(containerEl, "br") };
   let selectedNode = null;
 
@@ -203,7 +190,7 @@ export function attachSelectionHandles(cy, eh, containerEl, { onConnect, onRecon
       mousedownEvt.stopPropagation();
       if (!selectedNode) return;
       const node = selectedNode;
-      const box = node.boundingBox(); // model-space, unaffected by pan/zoom
+      const box = node.boundingBox();
       const opposite = OPPOSITE_CORNER[corner];
       const fixedX = opposite.includes("l") ? box.x1 : box.x2;
       const fixedY = opposite[0] === "t" ? box.y1 : box.y2;

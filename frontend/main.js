@@ -1,6 +1,4 @@
-// Library screen: list, open, create, rename and delete graphs, plus URL
-// routing (/ = library, /graphs/<name> = that graph, back/forward work).
-// Editing itself lives in editor.js.
+// Library screen: graph list, creation, deletion, and URL routing.
 
 import { openEditor } from "./editor.js";
 import { icon } from "./icons.js";
@@ -19,7 +17,7 @@ async function showLibrary() {
   editorEl.hidden = true;
   libraryEl.hidden = false;
 
-  const graphs = await fetch("/api/graphs").then((r) => r.json());
+  const graphs = await fetch("/api/graphs").then((response) => response.json());
   graphListEl.replaceChildren(
     ...graphs.map(({ name, created, modified }) => {
       const li = document.createElement("li");
@@ -87,7 +85,7 @@ function routeFromLocation() {
 window.addEventListener("popstate", routeFromLocation);
 
 async function main() {
-  labelSet = await fetch("/api/labels").then((r) => r.json());
+  labelSet = await fetch("/api/labels").then((response) => response.json());
 
   document.getElementById("back-to-library").prepend(icon("home"));
   document.getElementById("icon-add").prepend(icon("plus"));

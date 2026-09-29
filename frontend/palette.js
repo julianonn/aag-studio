@@ -11,8 +11,8 @@ function childrenOf(vertexLabels) {
 }
 
 function renderNode(label, children, onSelect) {
-  const kids = children[label] ?? [];
-  if (kids.length === 0) {
+  const childLabels = children[label] ?? [];
+  if (childLabels.length === 0) {
     const button = document.createElement("button");
     button.textContent = label;
     button.onclick = () => onSelect(label);
@@ -22,7 +22,7 @@ function renderNode(label, children, onSelect) {
   const summary = document.createElement("summary");
   summary.textContent = label;
   details.append(summary);
-  for (const kid of kids.sort()) details.append(renderNode(kid, children, onSelect));
+  for (const childLabel of childLabels.sort()) details.append(renderNode(childLabel, children, onSelect));
   return details;
 }
 

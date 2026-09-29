@@ -1,7 +1,3 @@
-// A toolbar-button click bubbles to document (unlike right-click's
-// synthetic cxttap), so the close-on-outside-click listener is deferred
-// past the current click or it closes the menu it just opened.
-
 let openMenuEl = null;
 let outsideClickListener = null;
 
@@ -31,6 +27,7 @@ export function showContextMenu(x, y, items) {
   }
   document.body.append(menu);
   openMenuEl = menu;
+  // Defer listener to next tick so current click does not immediately close the menu
   setTimeout(() => {
     outsideClickListener = closeMenu;
     document.addEventListener("click", outsideClickListener);

@@ -67,8 +67,8 @@ edge_labels:
   ha: []
   ga: []
 
-# ha edges = "has a" relationship; connects an agent to a resource
-# ga edges = "goes after" relationship; connects a resource to an "access method" (A) or vice versa
+# ha edges = "has access" relationship; connects an agent to a resource
+# ga edges = "gives access" relationship; connects a resource to an "access method" (A) or vice versa
 # people HAVE access to things
 # things GIVE access to other things
 edge_rules:
