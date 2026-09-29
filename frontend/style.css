@@ -28,13 +28,77 @@ button { outline: none; border: none; background: none; }
 #graph-list li { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #f0f0f0; }
 
 #editor { position: relative; width: 100vw; height: 100vh; overflow: hidden; }
-#graph { position: absolute; inset: 0; width: 100%; height: 100%; }
-#graph.mode-pan { cursor: grab; }
-#graph.mode-pan:active { cursor: grabbing; }
-#graph.mode-select { cursor: default; }
-#graph.mode-edge { cursor: crosshair; }
+#canvas-svg { position: absolute; inset: 0; width: 100%; height: 100%; user-select: none; touch-action: none; }
+#canvas-svg.mode-pan { cursor: grab; }
+#canvas-svg.mode-pan:active, #canvas-svg.panning { cursor: grabbing; }
+#canvas-svg.mode-select { cursor: default; }
+#canvas-svg.mode-edge { cursor: crosshair; }
 
-.edge-preview-layer { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 25; overflow: visible; }
+.svg-node { cursor: pointer; }
+.svg-edge { cursor: pointer; }
+.edge-hit-area { cursor: pointer; }
+
+.edge-label {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 9px;
+  font-weight: 600;
+  fill: #555;
+  paint-order: stroke fill;
+  stroke: #fff;
+  stroke-width: 4px;
+  stroke-linejoin: round;
+  user-select: none;
+  pointer-events: none;
+}
+
+.snap-dot {
+  fill: var(--color-selected);
+  stroke: #fff;
+  stroke-width: 1.5;
+  cursor: crosshair;
+  transition: r 0.1s ease;
+}
+.snap-dot.active {
+  fill: #1a4fba;
+  stroke-width: 2;
+}
+
+.reconnect-handle {
+  fill: var(--color-handle);
+  stroke: #fff;
+  stroke-width: 2;
+  cursor: crosshair;
+}
+
+.elbow-handle {
+  fill: #f5a623;
+  stroke: #fff;
+  stroke-width: 2;
+}
+
+.island-meta-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+  color: #555;
+  padding: 2px 0;
+}
+
+.island-action-btn {
+  padding: 4px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 11px;
+  background: #f8f9fa;
+  color: #444;
+  margin-top: 4px;
+  text-align: center;
+}
+.island-action-btn:hover {
+  background: #eef1f5;
+}
 
 .floating-island {
   position: absolute; z-index: 30; background: #fff; border: 1px solid var(--color-border);
@@ -99,12 +163,6 @@ button { outline: none; border: none; background: none; }
 #violations-list { list-style: none; padding: 0; margin: 0; color: var(--color-violation); font-size: 12px; }
 #violations-list li { padding: 4px 0; border-bottom: 1px solid #fee; }
 
-.edge-handle {
-  position: absolute; width: 12px; height: 12px; margin: -6px 0 0 -6px;
-  border-radius: 50%; background: var(--color-handle); border: 2px solid var(--color-handle-border);
-  box-shadow: 0 1px 3px var(--color-handle-shadow); cursor: crosshair; z-index: 10;
-}
-
 .context-menu {
   position: fixed; background: var(--color-menu-bg); border: 1px solid var(--color-menu-border);
   border-radius: 6px; box-shadow: 0 2px 8px var(--color-menu-shadow); z-index: 100; min-width: 140px;
@@ -115,8 +173,9 @@ button { outline: none; border: none; background: none; }
 .context-menu button:hover { background: #f2f4f8; }
 
 .resize-handle {
-  position: absolute; width: 8px; height: 8px; margin: -4px 0 0 -4px;
-  background: #fff; border: 2px solid var(--color-resize-handle-border); z-index: 10;
+  fill: #fff;
+  stroke: var(--color-resize-handle-border);
+  stroke-width: 1.5;
 }
 .resize-handle.tl, .resize-handle.br { cursor: nwse-resize; }
 .resize-handle.tr, .resize-handle.bl { cursor: nesw-resize; }

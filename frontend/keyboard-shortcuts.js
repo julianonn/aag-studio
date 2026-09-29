@@ -1,7 +1,7 @@
 // Canvas keyboard shortcuts (undo/redo, delete, select-all, escape, modes, space-pan)
 
 export function attachKeyboardShortcuts({
-  cy,
+  onSelectAll,
   onUndo,
   onRedo,
   onDuplicate,
@@ -39,7 +39,7 @@ export function attachKeyboardShortcuts({
 
     if (modifier && evt.key.toLowerCase() === "a") {
       evt.preventDefault();
-      cy.elements().select();
+      onSelectAll?.();
       return;
     }
 

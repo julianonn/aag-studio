@@ -150,6 +150,10 @@ def put_layout(name: str, layout: dict) -> dict:
             existing["sizes"] = {k: v for k, v in existing["sizes"].items() if k in valid_vertex_ids}
         if "edge_styles" in existing:
             existing["edge_styles"] = {k: v for k, v in existing["edge_styles"].items() if k in valid_edge_ids}
+        if "edge_endpoints" in existing:
+            existing["edge_endpoints"] = {k: v for k, v in existing["edge_endpoints"].items() if k in valid_edge_ids}
+        if "edge_elbows" in existing:
+            existing["edge_elbows"] = {k: v for k, v in existing["edge_elbows"].items() if k in valid_edge_ids}
     _write_layout(name, existing)
     return {}
 

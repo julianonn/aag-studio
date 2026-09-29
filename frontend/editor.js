@@ -1,19 +1,10 @@
+import { CanvasSvg } from "./canvas-svg.js";
 import { renderPalette } from "./palette.js";
 import { showContextMenu } from "./contextmenu.js";
-import { attachSelectionHandles } from "./selection-handles.js";
 import { topLevelKind, inferredEdgeLabel, nextId, validateGraph, debounce, computeDefaultLayout } from "./graph-utils.js";
 import { attachKeyboardShortcuts } from "./keyboard-shortcuts.js";
-import { AUTOSAVE_DEBOUNCE_MS, DUPLICATE_OFFSET, GATE_NODE_SIZE, BASE_ZOOM } from "./constants.js";
+import { AUTOSAVE_DEBOUNCE_MS, DUPLICATE_OFFSET, BASE_ZOOM } from "./constants.js";
 import { modalAlert, modalPrompt } from "./modal.js";
-
-const rootStyle = getComputedStyle(document.documentElement);
-const KIND_COLOR = {
-  resource: rootStyle.getPropertyValue("--kind-resource").trim(),
-  agent: rootStyle.getPropertyValue("--kind-agent").trim(),
-  A: rootStyle.getPropertyValue("--kind-A").trim(),
-};
-const KIND_DEFAULT_COLOR = rootStyle.getPropertyValue("--kind-default").trim();
-const SELECTED_COLOR = rootStyle.getPropertyValue("--color-selected").trim();
 
 export async function openEditor(graphName, labelSet, { onExit, onRename }) {
   let graph = await fetch(`/api/graphs/${graphName}`).then((response) => response.json());
@@ -24,6 +15,8 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
   }
   const edgeStyles = rawLayout.edge_styles ?? {};
   const sizes = rawLayout.sizes ?? {};
+  const edgeEndpoints = rawLayout.edge_endpoints ?? {};
+  const edgeElbows = rawLayout.edge_elbows ?? {};
 
   const issuesCountEl = document.getElementById("issues-count");
   const violationsList = document.getElementById("violations-list");
@@ -59,10 +52,22 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
     for (const id of Object.keys(edgeStyles)) {
       if (!validEdgeIds.has(id)) delete edgeStyles[id];
     }
+    for (const id of Object.keys(edgeEndpoints)) {
+      if (!validEdgeIds.has(id)) delete edgeEndpoints[id];
+    }
+    for (const id of Object.keys(edgeElbows)) {
+      if (!validEdgeIds.has(id)) delete edgeElbows[id];
+    }
     fetch(`/api/graphs/${graphName}/layout`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ positions, edge_styles: edgeStyles, sizes }),
+      body: JSON.stringify({
+        positions,
+        edge_styles: edgeStyles,
+        sizes,
+        edge_endpoints: edgeEndpoints,
+        edge_elbows: edgeElbows,
+      }),
     });
   }
   const debouncedSaveLayout = debounce(saveLayout, AUTOSAVE_DEBOUNCE_MS);
@@ -79,144 +84,33 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
     );
   }
 
-  function elementsFromGraph() {
-    return [
-      ...graph.vertices.map((vertex) => ({
-        data: {
-          id: vertex.id,
-          label: vertex.label,
-          kind: topLevelKind(vertex.label, labelSet.vertex_labels),
-          ...(sizes[vertex.id] ? { width: sizes[vertex.id][0], height: sizes[vertex.id][1] } : {}),
-        },
-        position: positions[vertex.id] ? { x: positions[vertex.id][0], y: positions[vertex.id][1] } : undefined,
-      })),
-      ...graph.edges.map((edge) => ({
-        data: {
-          id: edge.id,
-          source: edge.src,
-          target: edge.tgt,
-          label: edge.label,
-          time: edge.time,
-          curveStyle: edgeStyles[edge.id] ?? "bezier",
-        },
-      })),
-    ];
-  }
-
-  const cy = cytoscape({
-    container: document.getElementById("graph"),
-    elements: elementsFromGraph(),
-    minZoom: 0.1,
-    maxZoom: 4.0,
-    zoom: BASE_ZOOM,
-    pan: { x: 0, y: 0 },
-    layout: {
-      name: "preset",
-      fit: false,
-    },
-    style: [
-      {
-        selector: "core",
-        style: {
-          "active-bg-opacity": 0,
-          "selection-box-color": "#2f6fed",
-          "selection-box-opacity": 0.12,
-          "selection-box-border-color": "#2f6fed",
-          "selection-box-border-width": 1.5,
-        },
-      },
-      {
-        selector: "node",
-        style: {
-          label: "data(label)",
-          "background-color": (node) => KIND_COLOR[node.data("kind")] ?? KIND_DEFAULT_COLOR,
-          color: "#fff",
-          "text-valign": "center",
-          "text-halign": "center",
-          "text-wrap": "wrap",
-          "text-max-width": "80px",
-          shape: "round-rectangle",
-          width: "label",
-          height: "label",
-          padding: "10px",
-          "font-size": 11,
-          "overlay-opacity": 0,
-        },
-      },
-      { selector: "node[kind = 'A']", style: { shape: "diamond", label: "A", width: GATE_NODE_SIZE, height: GATE_NODE_SIZE, padding: 0 } },
-      { selector: "node[width]", style: { width: "data(width)", height: "data(height)" } },
-      { selector: "node:selected", style: { "border-width": 3, "border-color": SELECTED_COLOR } },
-      { selector: "node.edge-hover", style: { "border-width": 3, "border-color": SELECTED_COLOR } },
-      {
-        selector: "edge",
-        style: {
-          label: "data(label)",
-          "curve-style": "data(curveStyle)",
-          "target-arrow-shape": "triangle",
-          "font-size": 8,
-          "overlay-opacity": 0,
-        },
-      },
-      { selector: "edge:selected", style: { "line-color": SELECTED_COLOR, "target-arrow-color": SELECTED_COLOR, width: 3 } },
-    ],
-  });
-
-  cy.resize();
-  cy.zoom(BASE_ZOOM);
-  cy.center();
-
-  function rerender() {
-    hideItemIsland();
-    if (!Object.keys(positions).length && graph.vertices.length > 0) {
-      Object.assign(positions, computeDefaultLayout(graph.vertices, graph.edges));
-    }
-    cy.elements().remove();
-    cy.add(elementsFromGraph());
-  }
-
   function snapshotState() {
     return {
       graph: JSON.parse(JSON.stringify(graph)),
       positions: JSON.parse(JSON.stringify(positions)),
       sizes: JSON.parse(JSON.stringify(sizes)),
       edgeStyles: JSON.parse(JSON.stringify(edgeStyles)),
+      edgeEndpoints: JSON.parse(JSON.stringify(edgeEndpoints)),
+      edgeElbows: JSON.parse(JSON.stringify(edgeElbows)),
     };
   }
 
   function restoreState(state) {
-    const graphChanged = JSON.stringify(graph) !== JSON.stringify(state.graph);
-    graph = state.graph;
+    graph = JSON.parse(JSON.stringify(state.graph));
     for (const key of Object.keys(positions)) delete positions[key];
-    Object.assign(positions, state.positions);
+    Object.assign(positions, JSON.parse(JSON.stringify(state.positions)));
     for (const key of Object.keys(sizes)) delete sizes[key];
-    Object.assign(sizes, state.sizes);
+    Object.assign(sizes, JSON.parse(JSON.stringify(state.sizes)));
     for (const key of Object.keys(edgeStyles)) delete edgeStyles[key];
-    Object.assign(edgeStyles, state.edgeStyles);
+    Object.assign(edgeStyles, JSON.parse(JSON.stringify(state.edgeStyles)));
+    for (const key of Object.keys(edgeEndpoints)) delete edgeEndpoints[key];
+    Object.assign(edgeEndpoints, JSON.parse(JSON.stringify(state.edgeEndpoints ?? {})));
+    for (const key of Object.keys(edgeElbows)) delete edgeElbows[key];
+    Object.assign(edgeElbows, JSON.parse(JSON.stringify(state.edgeElbows ?? {})));
 
-    if (graphChanged) {
-      rerender();
-      refreshViolations();
-      debouncedSaveGraph();
-    } else {
-      cy.batch(() => {
-        cy.nodes().forEach((node) => {
-          const id = node.id();
-          if (positions[id]) {
-            node.position({ x: positions[id][0], y: positions[id][1] });
-          }
-          if (sizes[id]) {
-            node.data({ width: sizes[id][0], height: sizes[id][1] });
-          } else {
-            node.removeData("width");
-            node.removeData("height");
-          }
-        });
-        cy.edges().forEach((edge) => {
-          const id = edge.id();
-          edge.data("curveStyle", edgeStyles[id] ?? "bezier");
-        });
-      });
-    }
+    rerender();
+    refreshViolations();
+    debouncedSaveGraph();
     debouncedSaveLayout();
     if (activeSelectedItem) {
       renderSelectedItemIsland();
@@ -263,32 +157,208 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
   };
   updateUndoRedoButtons();
 
+  let activeSelectedItem = null;
+  let lastStateBeforeDrag = null;
+  let resizeStartState = null;
+
+  const canvas = new CanvasSvg(document.getElementById("canvas-svg"), {
+    onSelectionChange: (selection) => {
+      if (activeMode === "edge") return;
+      if (selection.nodes.length === 1 && selection.edges.length === 0) {
+        activeSelectedItem = { type: "node", id: selection.nodes[0] };
+        renderSelectedItemIsland();
+      } else if (selection.edges.length === 1 && selection.nodes.length === 0) {
+        activeSelectedItem = { type: "edge", id: selection.edges[0] };
+        renderSelectedItemIsland();
+      } else {
+        hideItemIsland();
+      }
+    },
+    onNodeDragStart: () => {
+      lastStateBeforeDrag = snapshotState();
+    },
+    onNodeDragEnd: (moved) => {
+      if (moved && lastStateBeforeDrag) {
+        undoStack.push(lastStateBeforeDrag);
+        redoStack.length = 0;
+        updateUndoRedoButtons();
+        debouncedSaveLayout();
+      }
+      lastStateBeforeDrag = null;
+    },
+    onNodeResizeStart: () => {
+      resizeStartState = snapshotState();
+    },
+    onNodeResizeEnd: (vertexId, width, height, x, y) => {
+      const prev = resizeStartState?.sizes[vertexId];
+      const prevPos = resizeStartState?.positions[vertexId];
+      const changed =
+        !prev ||
+        prev[0] !== width ||
+        prev[1] !== height ||
+        !prevPos ||
+        prevPos[0] !== x ||
+        prevPos[1] !== y;
+      sizes[vertexId] = [width, height];
+      positions[vertexId] = [x, y];
+      if (changed && resizeStartState) {
+        undoStack.push(resizeStartState);
+        redoStack.length = 0;
+        updateUndoRedoButtons();
+      }
+      resizeStartState = null;
+      debouncedSaveLayout();
+      if (activeSelectedItem && activeSelectedItem.id === vertexId) {
+        renderSelectedItemIsland();
+      }
+    },
+    onEdgeElbowStart: () => {
+      lastStateBeforeDrag = snapshotState();
+    },
+    onEdgeElbowEnd: (edgeId, val) => {
+      if (lastStateBeforeDrag) {
+        undoStack.push(lastStateBeforeDrag);
+        redoStack.length = 0;
+        updateUndoRedoButtons();
+        edgeElbows[edgeId] = val;
+        debouncedSaveLayout();
+        if (activeSelectedItem && activeSelectedItem.id === edgeId) {
+          renderSelectedItemIsland();
+        }
+      }
+      lastStateBeforeDrag = null;
+    },
+    onEdgeEndpointChange: async (edgeId, end, targetNodeId, relPos) => {
+      const edge = graph.edges.find((e) => e.id === edgeId);
+      if (!edge) return;
+      const isSameNode = (end === "src" && edge.src === targetNodeId) || (end === "tgt" && edge.tgt === targetNodeId);
+
+      if (isSameNode) {
+        undoStack.push(snapshotState());
+        redoStack.length = 0;
+        updateUndoRedoButtons();
+        edgeEndpoints[edgeId] ??= {};
+        edgeEndpoints[edgeId][end] = relPos;
+        canvas.setData({
+          vertices: graph.vertices,
+          edges: graph.edges,
+          positions,
+          sizes,
+          edgeStyles,
+          edgeEndpoints,
+          edgeElbows,
+          labelSet,
+        });
+        debouncedSaveLayout();
+        if (activeSelectedItem && activeSelectedItem.id === edgeId) {
+          renderSelectedItemIsland();
+        }
+      } else {
+        const updated = end === "src" ? { ...edge, src: targetNodeId } : { ...edge, tgt: targetNodeId };
+        const srcVertex = graph.vertices.find((v) => v.id === updated.src);
+        const tgtVertex = graph.vertices.find((v) => v.id === updated.tgt);
+        if (!srcVertex || !tgtVertex) return;
+        const newLabel = inferredEdgeLabel(labelSet, srcVertex.label, tgtVertex.label);
+        if (!newLabel) {
+          await modalAlert("No edge rule matches that reconnection", "Invalid connection");
+          canvas.render();
+          return;
+        }
+        undoStack.push(snapshotState());
+        redoStack.length = 0;
+        updateUndoRedoButtons();
+        edgeEndpoints[edgeId] ??= {};
+        edgeEndpoints[edgeId][end] = relPos;
+        updated.label = newLabel;
+        graph = {
+          vertices: graph.vertices,
+          edges: graph.edges.map((e) => (e.id === edgeId ? updated : e)),
+        };
+        rerender();
+        debouncedSaveGraph();
+        debouncedSaveLayout();
+        canvas.select(edgeId, "edge");
+      }
+    },
+    onEdgeConnect: async (sourceId, targetId, srcRel, tgtRel) => {
+      const ok = await tryAddEdge(sourceId, targetId, selectedEdgeStyle, selectedEdgeType, getSelectedEdgeTime(), srcRel, tgtRel);
+      if (ok) {
+        closeAddPanels();
+      }
+    },
+    onContextMenuNode: (nodeId, clientX, clientY) => {
+      showContextMenu(clientX, clientY, [
+        { label: "Delete", onClick: () => tryDeleteVertex(nodeId) },
+      ]);
+    },
+    onContextMenuEdge: (edgeId, clientX, clientY) => {
+      showContextMenu(clientX, clientY, [
+        { label: "Delete", onClick: () => tryDeleteEdge(edgeId) },
+        { label: "Straight", onClick: () => setEdgeStyle(edgeId, "straight") },
+        { label: "Elbow", onClick: () => setEdgeStyle(edgeId, "taxi") },
+        { label: "Curved", onClick: () => setEdgeStyle(edgeId, "bezier") },
+      ]);
+    },
+    onZoomChange: () => updateZoomText(),
+  });
+
+  function rerender() {
+    hideItemIsland();
+    if (!Object.keys(positions).length && graph.vertices.length > 0) {
+      Object.assign(positions, computeDefaultLayout(graph.vertices, graph.edges));
+    }
+    canvas.setData({
+      vertices: graph.vertices,
+      edges: graph.edges,
+      positions,
+      sizes,
+      edgeStyles,
+      edgeEndpoints,
+      edgeElbows,
+      labelSet,
+    });
+  }
+
   async function tryAddVertex(label) {
     const id = nextId(new Set(graph.vertices.map((vertex) => vertex.id)), label);
-    const extent = cy.extent();
-    positions[id] = [Math.round((extent.x1 + extent.x2) / 2), Math.round((extent.y1 + extent.y2) / 2)];
+    positions[id] = canvas.getViewCenter();
     await applyGraph({ vertices: [...graph.vertices, { id, label }], edges: graph.edges });
     debouncedSaveLayout();
   }
 
-  async function tryAddEdge(sourceId, targetId, style = selectedEdgeStyle, type = selectedEdgeType, time = getSelectedEdgeTime()) {
+  async function tryAddEdge(
+    sourceId,
+    targetId,
+    style = selectedEdgeStyle,
+    type = selectedEdgeType,
+    time = getSelectedEdgeTime(),
+    srcRel = null,
+    tgtRel = null
+  ) {
     const existingIds = new Set(graph.edges.map((edge) => edge.id));
     const id = nextId(existingIds, "e");
     const sourceVertex = graph.vertices.find((vertex) => vertex.id === sourceId);
     const targetVertex = graph.vertices.find((vertex) => vertex.id === targetId);
-    if (!sourceVertex || !targetVertex) return;
+    if (!sourceVertex || !targetVertex) return false;
     const label = type || inferredEdgeLabel(labelSet, sourceVertex.label, targetVertex.label);
     if (!label) {
       await modalAlert(`no edge rule matches ${sourceVertex.label} -> ${targetVertex.label}`, "Invalid connection");
-      return;
+      return false;
     }
     edgeStyles[id] = style;
+    if (srcRel || tgtRel) {
+      edgeEndpoints[id] = {
+        ...(srcRel ? { src: srcRel } : {}),
+        ...(tgtRel ? { tgt: tgtRel } : {}),
+      };
+    }
     const edge = { id, src: sourceId, tgt: targetId, label, time: time ?? [[0, null]] };
     const ok = await applyGraph({ vertices: graph.vertices, edges: [...graph.edges, edge] });
     if (ok) {
-      cy.getElementById(id).select();
+      canvas.select(id, "edge");
     }
     debouncedSaveLayout();
+    return ok;
   }
 
   async function tryDeleteVertex(vertexId) {
@@ -303,16 +373,17 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
 
   async function tryDeleteEdge(edgeId) {
     delete edgeStyles[edgeId];
+    delete edgeEndpoints[edgeId];
+    delete edgeElbows[edgeId];
     await applyGraph({ vertices: graph.vertices, edges: graph.edges.filter((edge) => edge.id !== edgeId) });
     debouncedSaveLayout();
   }
 
   async function tryDeleteSelected() {
-    const selectedElements = cy.$(":selected");
-    if (selectedElements.length === 0) return;
-
-    const selectedNodeIds = new Set(selectedElements.nodes().map((node) => node.id()));
-    const selectedEdgeIds = new Set(selectedElements.edges().map((edge) => edge.id()));
+    const selected = canvas.getSelected();
+    const selectedNodeIds = new Set(selected.nodes);
+    const selectedEdgeIds = new Set(selected.edges);
+    if (selectedNodeIds.size === 0 && selectedEdgeIds.size === 0) return;
 
     for (const nodeId of selectedNodeIds) {
       delete positions[nodeId];
@@ -320,6 +391,8 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
     }
     for (const edgeId of selectedEdgeIds) {
       delete edgeStyles[edgeId];
+      delete edgeEndpoints[edgeId];
+      delete edgeElbows[edgeId];
     }
 
     await applyGraph({
@@ -343,7 +416,7 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
     const ok = await applyGraph({ vertices: [...graph.vertices, { ...original, id }], edges: graph.edges });
     if (ok) {
       debouncedSaveLayout();
-      cy.getElementById(id).select();
+      canvas.select(id, "node");
     }
   }
 
@@ -352,21 +425,21 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
     if (!original) return;
     const id = nextId(new Set(graph.edges.map((edge) => edge.id)), "e");
     if (edgeStyles[edgeId]) edgeStyles[id] = edgeStyles[edgeId];
+    if (edgeEndpoints[edgeId]) edgeEndpoints[id] = JSON.parse(JSON.stringify(edgeEndpoints[edgeId]));
+    if (edgeElbows[edgeId]) edgeElbows[id] = edgeElbows[edgeId];
     const ok = await applyGraph({ vertices: graph.vertices, edges: [...graph.edges, { ...original, id }] });
     if (ok) {
       debouncedSaveLayout();
-      cy.getElementById(id).select();
+      canvas.select(id, "edge");
     }
   }
 
   async function tryDuplicateSelected() {
-    const selected = cy.$(":selected");
-    if (selected.length === 0) return;
-    const el = selected[0];
-    if (el.isNode()) {
-      await tryDuplicateVertex(el.id());
-    } else if (el.isEdge()) {
-      await tryDuplicateEdge(el.id());
+    const selected = canvas.getSelected();
+    if (selected.nodes.length === 1 && selected.edges.length === 0) {
+      await tryDuplicateVertex(selected.nodes[0]);
+    } else if (selected.edges.length === 1 && selected.nodes.length === 0) {
+      await tryDuplicateEdge(selected.edges[0]);
     }
   }
 
@@ -376,6 +449,14 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
       await modalAlert(`A vertex named "${newId}" already exists`, "Duplicate vertex");
       return;
     }
+    if (positions[oldId]) {
+      positions[newId] = positions[oldId];
+      delete positions[oldId];
+    }
+    if (sizes[oldId]) {
+      sizes[newId] = sizes[oldId];
+      delete sizes[oldId];
+    }
     await applyGraph({
       vertices: graph.vertices.map((vertex) => (vertex.id === oldId ? { ...vertex, id: newId } : vertex)),
       edges: graph.edges.map((edge) => ({
@@ -384,6 +465,8 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
         tgt: edge.tgt === oldId ? newId : edge.tgt,
       })),
     });
+    debouncedSaveLayout();
+    canvas.select(newId, "node");
   }
 
   async function tryChangeVertexLabel(vertexId, newLabel) {
@@ -391,26 +474,7 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
       vertices: graph.vertices.map((vertex) => (vertex.id === vertexId ? { ...vertex, label: newLabel } : vertex)),
       edges: graph.edges,
     });
-  }
-
-  async function tryReconnectEdge(edgeId, movingEnd, droppedNodeId) {
-    const edge = graph.edges.find((edge) => edge.id === edgeId);
-    const updated = movingEnd === "src" ? { ...edge, src: droppedNodeId } : { ...edge, tgt: droppedNodeId };
-    const newLabel = inferredEdgeLabel(
-      labelSet,
-      graph.vertices.find((vertex) => vertex.id === updated.src).label,
-      graph.vertices.find((vertex) => vertex.id === updated.tgt).label
-    );
-    if (!newLabel) {
-      await modalAlert("No edge rule matches that reconnection", "Invalid connection");
-      return;
-    }
-    updated.label = newLabel;
-    await applyGraph({
-      vertices: graph.vertices,
-      edges: graph.edges.map((edge) => (edge.id === edgeId ? updated : edge)),
-    });
-    debouncedSaveLayout();
+    canvas.select(vertexId, "node");
   }
 
   const paletteIsland = document.getElementById("palette-island");
@@ -435,6 +499,7 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
     styleBezierBtn.classList.toggle("active", style === "bezier");
     styleTaxiBtn.classList.toggle("active", style === "taxi");
     styleStraightBtn.classList.toggle("active", style === "straight");
+    canvas.setActiveEdgeStyle(style);
   }
   styleBezierBtn.onclick = () => setEdgeCurveStyle("bezier");
   styleTaxiBtn.onclick = () => setEdgeCurveStyle("taxi");
@@ -464,13 +529,10 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
   function closeAddPanels() {
     paletteIsland.hidden = true;
     edgeIsland.hidden = true;
-    itemIsland.hidden = true;
     toolAddVertex.classList.remove("active");
     toolAddEdge.classList.remove("active");
-    clearEdgeHighlights();
-    hidePreviewLine();
     if (activeMode === "edge") {
-      setMode("select");
+      setMode(previousMode || "pan");
     }
   }
 
@@ -506,75 +568,12 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
   const zoomInBtn = document.getElementById("btn-zoom-in");
 
   function updateZoomText() {
-    zoomResetBtn.textContent = `${Math.round((cy.zoom() / BASE_ZOOM) * 100)}%`;
+    zoomResetBtn.textContent = `${Math.round((canvas.getZoom() / BASE_ZOOM) * 100)}%`;
   }
-  zoomOutBtn.onclick = () => {
-    cy.zoom({ level: cy.zoom() * 0.8, renderedPosition: { x: cy.width() / 2, y: cy.height() / 2 } });
-    updateZoomText();
-  };
-  zoomInBtn.onclick = () => {
-    cy.zoom({ level: cy.zoom() * 1.25, renderedPosition: { x: cy.width() / 2, y: cy.height() / 2 } });
-    updateZoomText();
-  };
-  zoomResetBtn.onclick = () => {
-    cy.zoom({ level: BASE_ZOOM, renderedPosition: { x: cy.width() / 2, y: cy.height() / 2 } });
-    cy.center();
-    updateZoomText();
-  };
-  cy.on("zoom", updateZoomText);
+  zoomOutBtn.onclick = () => canvas.zoomOut();
+  zoomInBtn.onclick = () => canvas.zoomIn();
+  zoomResetBtn.onclick = () => canvas.resetZoom();
   updateZoomText();
-
-  document.getElementById("graph").addEventListener("contextmenu", (evt) => evt.preventDefault());
-
-  const eh = cy.edgehandles({
-    canConnect: (source, target) => !!inferredEdgeLabel(labelSet, source.data("label"), target.data("label")),
-    edgeParams: () => ({}),
-    hoverDelay: 0,
-  });
-
-  let resizeStartState = null;
-  attachSelectionHandles(cy, eh, document.getElementById("graph"), {
-    onConnect: tryAddEdge,
-    onReconnect: tryReconnectEdge,
-    onResizeStart: () => {
-      resizeStartState = snapshotState();
-    },
-    onResize: (vertexId, width, height, x, y) => {
-      const prev = resizeStartState?.sizes[vertexId];
-      const prevPos = resizeStartState?.positions[vertexId];
-      const changed = !prev || prev[0] !== width || prev[1] !== height ||
-                      !prevPos || prevPos[0] !== x || prevPos[1] !== y;
-      sizes[vertexId] = [width, height];
-      positions[vertexId] = [x, y];
-      if (changed && resizeStartState) {
-        undoStack.push(resizeStartState);
-        redoStack.length = 0;
-        updateUndoRedoButtons();
-      }
-      resizeStartState = null;
-      debouncedSaveLayout();
-      if (activeSelectedItem && activeSelectedItem.id() === vertexId) {
-        renderSelectedItemIsland();
-      }
-    },
-  });
-
-  cy.on("cxttap", "node", (evt) => {
-    const node = evt.target;
-    showContextMenu(evt.originalEvent.clientX, evt.originalEvent.clientY, [
-      { label: "Delete", onClick: () => tryDeleteVertex(node.id()) },
-    ]);
-  });
-
-  cy.on("cxttap", "edge", (evt) => {
-    const edge = evt.target;
-    showContextMenu(evt.originalEvent.clientX, evt.originalEvent.clientY, [
-      { label: "Delete", onClick: () => tryDeleteEdge(edge.id()) },
-      { label: "Straight", onClick: () => setEdgeStyle(edge.id(), "straight") },
-      { label: "Elbow", onClick: () => setEdgeStyle(edge.id(), "taxi") },
-      { label: "Curved", onClick: () => setEdgeStyle(edge.id(), "bezier") },
-    ]);
-  });
 
   function setEdgeStyle(edgeId, style) {
     if (edgeStyles[edgeId] === style) return;
@@ -582,14 +581,21 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
     redoStack.length = 0;
     updateUndoRedoButtons();
     edgeStyles[edgeId] = style;
-    cy.getElementById(edgeId).data("curveStyle", style);
+    canvas.setData({
+      vertices: graph.vertices,
+      edges: graph.edges,
+      positions,
+      sizes,
+      edgeStyles,
+      edgeEndpoints,
+      edgeElbows,
+      labelSet,
+    });
     debouncedSaveLayout();
-    if (activeSelectedItem && activeSelectedItem.id() === edgeId) {
+    if (activeSelectedItem && activeSelectedItem.id === edgeId) {
       renderSelectedItemIsland();
     }
   }
-
-  let activeSelectedItem = null;
 
   function hideItemIsland() {
     activeSelectedItem = null;
@@ -599,24 +605,24 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
 
   itemIslandCloseBtn.onclick = () => {
     hideItemIsland();
-    cy.elements().unselect();
+    canvas.clearSelection();
   };
 
   itemIslandDuplicateBtn.onclick = () => {
     if (!activeSelectedItem) return;
-    if (activeSelectedItem.isNode()) {
-      tryDuplicateVertex(activeSelectedItem.id());
-    } else if (activeSelectedItem.isEdge()) {
-      tryDuplicateEdge(activeSelectedItem.id());
+    if (activeSelectedItem.type === "node") {
+      tryDuplicateVertex(activeSelectedItem.id);
+    } else if (activeSelectedItem.type === "edge") {
+      tryDuplicateEdge(activeSelectedItem.id);
     }
   };
 
   itemIslandDeleteBtn.onclick = () => {
     if (!activeSelectedItem) return;
-    if (activeSelectedItem.isNode()) {
-      tryDeleteVertex(activeSelectedItem.id());
-    } else if (activeSelectedItem.isEdge()) {
-      tryDeleteEdge(activeSelectedItem.id());
+    if (activeSelectedItem.type === "node") {
+      tryDeleteVertex(activeSelectedItem.id);
+    } else if (activeSelectedItem.type === "edge") {
+      tryDeleteEdge(activeSelectedItem.id);
     }
   };
 
@@ -631,28 +637,25 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
     return row;
   }
 
-  function renderNodeFields(element) {
+  function renderNodeFields(vertex) {
     const nameInput = document.createElement("input");
-    nameInput.value = element.id();
-    nameInput.onchange = () => tryRenameVertex(element.id(), nameInput.value.trim());
+    nameInput.value = vertex.id;
+    nameInput.onchange = () => tryRenameVertex(vertex.id, nameInput.value.trim());
 
     const labelSelect = document.createElement("select");
     for (const label of ALL_VERTEX_LABELS) {
       const option = document.createElement("option");
       option.value = label;
       option.textContent = label;
-      option.selected = label === element.data("label");
+      option.selected = label === vertex.label;
       labelSelect.append(option);
     }
-    labelSelect.onchange = () => tryChangeVertexLabel(element.id(), labelSelect.value);
+    labelSelect.onchange = () => tryChangeVertexLabel(vertex.id, labelSelect.value);
 
     return [labeledField("Name", nameInput), labeledField("Label", labelSelect)];
   }
 
-  function renderEdgeFields(element) {
-    const edge = graph.edges.find((graphEdge) => graphEdge.id === element.id());
-    if (!edge) return [];
-
+  function renderEdgeFields(edge) {
     const currentStyle = edgeStyles[edge.id] ?? "bezier";
     const styleTitle = document.createElement("div");
     styleTitle.className = "island-section-title";
@@ -676,6 +679,106 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
       styleGroup.append(btn);
     }
 
+    const fields = [styleTitle, styleGroup];
+
+    // Elbow position if taxi style
+    if (currentStyle === "taxi") {
+      const elbowTitle = document.createElement("div");
+      elbowTitle.className = "island-section-title";
+      elbowTitle.textContent = "Elbow Offset";
+
+      const elbowInput = document.createElement("input");
+      elbowInput.type = "number";
+      elbowInput.value = edgeElbows[edge.id] ?? "";
+      elbowInput.placeholder = "auto";
+      elbowInput.onchange = () => {
+        undoStack.push(snapshotState());
+        redoStack.length = 0;
+        updateUndoRedoButtons();
+        const val = elbowInput.value.trim();
+        if (val === "") {
+          delete edgeElbows[edge.id];
+        } else {
+          edgeElbows[edge.id] = Number(val);
+        }
+        canvas.setData({
+          vertices: graph.vertices,
+          edges: graph.edges,
+          positions,
+          sizes,
+          edgeStyles,
+          edgeEndpoints,
+          edgeElbows,
+          labelSet,
+        });
+        debouncedSaveLayout();
+      };
+
+      const resetElbowBtn = document.createElement("button");
+      resetElbowBtn.className = "island-action-btn";
+      resetElbowBtn.type = "button";
+      resetElbowBtn.textContent = "Reset elbow to center";
+      resetElbowBtn.onclick = () => {
+        undoStack.push(snapshotState());
+        redoStack.length = 0;
+        updateUndoRedoButtons();
+        delete edgeElbows[edge.id];
+        canvas.setData({
+          vertices: graph.vertices,
+          edges: graph.edges,
+          positions,
+          sizes,
+          edgeStyles,
+          edgeEndpoints,
+          edgeElbows,
+          labelSet,
+        });
+        debouncedSaveLayout();
+        renderSelectedItemIsland();
+      };
+
+      fields.push(elbowTitle, labeledField("Pos", elbowInput), resetElbowBtn);
+    }
+
+    // Endpoints metadata
+    const endpointsTitle = document.createElement("div");
+    endpointsTitle.className = "island-section-title";
+    endpointsTitle.textContent = "Endpoints";
+
+    const customEp = edgeEndpoints[edge.id];
+    const srcRow = document.createElement("div");
+    srcRow.className = "island-meta-row";
+    srcRow.innerHTML = `<span>From: <strong>${edge.src}</strong></span><span>${customEp?.src ? "custom" : "auto"}</span>`;
+
+    const tgtRow = document.createElement("div");
+    tgtRow.className = "island-meta-row";
+    tgtRow.innerHTML = `<span>To: <strong>${edge.tgt}</strong></span><span>${customEp?.tgt ? "custom" : "auto"}</span>`;
+
+    const resetEpBtn = document.createElement("button");
+    resetEpBtn.className = "island-action-btn";
+    resetEpBtn.type = "button";
+    resetEpBtn.textContent = "Reset endpoints to auto";
+    resetEpBtn.onclick = () => {
+      undoStack.push(snapshotState());
+      redoStack.length = 0;
+      updateUndoRedoButtons();
+      delete edgeEndpoints[edge.id];
+      canvas.setData({
+        vertices: graph.vertices,
+        edges: graph.edges,
+        positions,
+        sizes,
+        edgeStyles,
+        edgeEndpoints,
+        edgeElbows,
+        labelSet,
+      });
+      debouncedSaveLayout();
+      renderSelectedItemIsland();
+    };
+
+    fields.push(endpointsTitle, srcRow, tgtRow, resetEpBtn);
+
     const typeTitle = document.createElement("div");
     typeTitle.className = "island-section-title";
     typeTitle.textContent = "Type";
@@ -693,6 +796,7 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
         vertices: graph.vertices,
         edges: graph.edges.map((e) => (e.id === edge.id ? { ...e, label: "ha" } : e)),
       });
+      canvas.select(edge.id, "edge");
     };
 
     const gaBtn = document.createElement("button");
@@ -705,8 +809,10 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
         vertices: graph.vertices,
         edges: graph.edges.map((e) => (e.id === edge.id ? { ...e, label: "ga" } : e)),
       });
+      canvas.select(edge.id, "edge");
     };
     typeGroup.append(haBtn, gaBtn);
+    fields.push(typeTitle, typeGroup);
 
     const timeTitle = document.createElement("div");
     timeTitle.className = "island-section-title";
@@ -730,223 +836,67 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
           graphEdge.id !== edge.id ? graphEdge : { ...graphEdge, time: edge.time.map((iv, idx) => (idx === intervalIndex ? newInterval : iv)) }
         );
         await applyGraph({ vertices: graph.vertices, edges: newEdges });
+        canvas.select(edge.id, "edge");
       }
       startInput.onchange = commit;
       endInput.onchange = commit;
     });
+    fields.push(timeTitle, timeList);
 
-    return [styleTitle, styleGroup, typeTitle, typeGroup, timeTitle, timeList];
+    return fields;
   }
 
   function renderSelectedItemIsland() {
-    const selected = cy.$(":selected");
-    if (selected.length !== 1) {
+    if (!activeSelectedItem) {
       hideItemIsland();
       return;
     }
-    const element = selected[0];
-    activeSelectedItem = element;
 
-    // Close any other open add panels so left side is clean
     paletteIsland.hidden = true;
     edgeIsland.hidden = true;
     toolAddVertex.classList.remove("active");
     toolAddEdge.classList.remove("active");
 
-    const isNode = element.isNode();
-    itemIslandTitle.textContent = isNode ? "Vertex" : "Edge";
-    itemIslandBody.replaceChildren(...(isNode ? renderNodeFields(element) : renderEdgeFields(element)));
-    itemIsland.hidden = false;
+    if (activeSelectedItem.type === "node") {
+      const vertex = graph.vertices.find((v) => v.id === activeSelectedItem.id);
+      if (!vertex) {
+        hideItemIsland();
+        return;
+      }
+      itemIslandTitle.textContent = "Vertex";
+      itemIslandBody.replaceChildren(...renderNodeFields(vertex));
+      itemIsland.hidden = false;
+    } else if (activeSelectedItem.type === "edge") {
+      const edge = graph.edges.find((e) => e.id === activeSelectedItem.id);
+      if (!edge) {
+        hideItemIsland();
+        return;
+      }
+      itemIslandTitle.textContent = "Edge";
+      itemIslandBody.replaceChildren(...renderEdgeFields(edge));
+      itemIsland.hidden = false;
+    }
   }
 
-  cy.on("select unselect", () => {
-    if (activeMode === "edge") return;
-    renderSelectedItemIsland();
-  });
-
-  let lastStateBeforeDrag = null;
-  cy.on("grab", "node", () => {
-    lastStateBeforeDrag = snapshotState();
-  });
-
-  cy.on("dragfree", "node", () => {
-    let moved = false;
-    if (lastStateBeforeDrag) {
-      for (const node of cy.nodes()) {
-        const id = node.id();
-        const prev = lastStateBeforeDrag.positions[id];
-        const curX = node.position("x");
-        const curY = node.position("y");
-        if (!prev || Math.abs(prev[0] - curX) > 1 || Math.abs(prev[1] - curY) > 1) {
-          moved = true;
-          break;
-        }
-      }
-    }
-    cy.nodes().forEach((node) => (positions[node.id()] = [node.position("x"), node.position("y")]));
-    if (moved && lastStateBeforeDrag) {
-      undoStack.push(lastStateBeforeDrag);
-      redoStack.length = 0;
-      updateUndoRedoButtons();
-      debouncedSaveLayout();
-    }
-    lastStateBeforeDrag = null;
-  });
-
-  const graphEl = document.getElementById("graph");
   const toolSelectBtn = document.getElementById("tool-select");
   const toolPanBtn = document.getElementById("tool-pan");
-  const previewPath = document.getElementById("edge-preview-path");
   let activeMode = "pan";
+  let previousMode = "pan";
   let spacePressed = false;
 
-  function getNodeAt(clientX, clientY) {
-    const rect = graphEl.getBoundingClientRect();
-    const rx = clientX - rect.left;
-    const ry = clientY - rect.top;
-    const nodes = cy.nodes();
-    for (let i = nodes.length - 1; i >= 0; i--) {
-      const box = nodes[i].renderedBoundingBox();
-      if (rx >= box.x1 && rx <= box.x2 && ry >= box.y1 && ry <= box.y2) {
-        return nodes[i];
-      }
-    }
-    return null;
-  }
-
-  function drawPreviewLine(x1, y1, x2, y2, style) {
-    let d = "";
-    if (style === "straight") {
-      d = `M ${x1} ${y1} L ${x2} ${y2}`;
-    } else if (style === "taxi") {
-      const midX = (x1 + x2) / 2;
-      d = `M ${x1} ${y1} L ${midX} ${y1} L ${midX} ${y2} L ${x2} ${y2}`;
-    } else {
-      const dx = x2 - x1;
-      const dy = y2 - y1;
-      const cx = (x1 + x2) / 2 - dy * 0.15;
-      const cyPt = (y1 + y2) / 2 + dx * 0.15;
-      d = `M ${x1} ${y1} Q ${cx} ${cyPt} ${x2} ${y2}`;
-    }
-    previewPath.setAttribute("d", d);
-    previewPath.hidden = false;
-  }
-
-  function hidePreviewLine() {
-    if (previewPath) {
-      previewPath.hidden = true;
-      previewPath.setAttribute("d", "");
-    }
-  }
-
-  let edgeDragSource = null;
-  let edgeDragTarget = null;
-  let hoveredNode = null;
-  let isDraggingEdge = false;
-
-  function clearEdgeHighlights() {
-    if (edgeDragSource) edgeDragSource.removeClass("edge-hover");
-    if (edgeDragTarget) edgeDragTarget.removeClass("edge-hover");
-    if (hoveredNode) hoveredNode.removeClass("edge-hover");
-    edgeDragSource = null;
-    edgeDragTarget = null;
-    hoveredNode = null;
-  }
-
-  graphEl.addEventListener("pointerdown", (evt) => {
-    if (activeMode !== "edge") return;
-    if (evt.button !== 0) return;
-    const node = getNodeAt(evt.clientX, evt.clientY);
-    if (!node) return;
-
-    evt.preventDefault();
-    evt.stopPropagation();
-    isDraggingEdge = true;
-    edgeDragSource = node;
-    node.addClass("edge-hover");
-    cy.elements().unselect();
-    hideFloatingToolbar();
-  });
-
-  window.addEventListener("pointermove", (evt) => {
-    if (activeMode !== "edge") return;
-
-    if (isDraggingEdge && edgeDragSource) {
-      evt.preventDefault();
-      const rect = graphEl.getBoundingClientRect();
-      const curX = evt.clientX - rect.left;
-      const curY = evt.clientY - rect.top;
-
-      const srcBox = edgeDragSource.renderedBoundingBox();
-      const x1 = (srcBox.x1 + srcBox.x2) / 2;
-      const y1 = (srcBox.y1 + srcBox.y2) / 2;
-
-      const hit = getNodeAt(evt.clientX, evt.clientY);
-      if (hit && hit.id() !== edgeDragSource.id()) {
-        if (edgeDragTarget && edgeDragTarget.id() !== hit.id()) {
-          edgeDragTarget.removeClass("edge-hover");
-        }
-        hit.addClass("edge-hover");
-        edgeDragTarget = hit;
-        const tgtBox = hit.renderedBoundingBox();
-        const x2 = (tgtBox.x1 + tgtBox.x2) / 2;
-        const y2 = (tgtBox.y1 + tgtBox.y2) / 2;
-        drawPreviewLine(x1, y1, x2, y2, selectedEdgeStyle);
-      } else {
-        if (edgeDragTarget) {
-          edgeDragTarget.removeClass("edge-hover");
-          edgeDragTarget = null;
-        }
-        drawPreviewLine(x1, y1, curX, curY, selectedEdgeStyle);
-      }
-    } else {
-      const hit = getNodeAt(evt.clientX, evt.clientY);
-      if (hit !== hoveredNode) {
-        if (hoveredNode) hoveredNode.removeClass("edge-hover");
-        if (hit) {
-          cy.elements().unselect();
-          hit.addClass("edge-hover");
-        }
-        hoveredNode = hit;
-      }
-    }
-  });
-
-  window.addEventListener("pointerup", (evt) => {
-    if (!isDraggingEdge) return;
-    isDraggingEdge = false;
-    hidePreviewLine();
-
-    const src = edgeDragSource;
-    const tgt = edgeDragTarget;
-    clearEdgeHighlights();
-
-    if (src && tgt && src.id() !== tgt.id()) {
-      tryAddEdge(src.id(), tgt.id(), selectedEdgeStyle, selectedEdgeType, getSelectedEdgeTime());
-      closeAddPanels();
-    }
-  });
-
   function applyMode() {
-    const isPan = spacePressed || activeMode === "pan";
-    const isEdge = activeMode === "edge";
-    cy.userPanningEnabled(isPan);
-    cy.boxSelectionEnabled(!isPan && !isEdge);
-    cy.autoungrabify(isEdge);
-    graphEl.classList.toggle("mode-pan", isPan);
-    graphEl.classList.toggle("mode-select", !isPan && !isEdge);
-    graphEl.classList.toggle("mode-edge", isEdge && !spacePressed);
+    canvas.setMode(activeMode);
+    canvas.setSpacePressed(spacePressed);
   }
 
   function setMode(mode) {
+    if (activeMode !== "edge" && mode === "edge") {
+      previousMode = activeMode;
+    }
     activeMode = mode;
     toolSelectBtn.classList.toggle("active", mode === "select");
     toolPanBtn.classList.toggle("active", mode === "pan");
     toolAddEdge.classList.toggle("active", mode === "edge");
-    if (mode !== "edge") {
-      clearEdgeHighlights();
-      hidePreviewLine();
-    }
     applyMode();
   }
 
@@ -961,14 +911,14 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
   setMode("pan");
 
   const detachKeyboardShortcuts = attachKeyboardShortcuts({
-    cy,
+    onSelectAll: () => canvas.selectAll(),
     onUndo: () => undoButton.click(),
     onRedo: () => redoButton.click(),
     onDuplicate: tryDuplicateSelected,
     onDelete: tryDeleteSelected,
     onEscape: () => {
       hideItemIsland();
-      cy.elements().unselect();
+      canvas.clearSelection();
       hamburgerMenu.hidden = true;
       closeAddPanels();
       issuesDialog.hidden = true;
@@ -1012,7 +962,7 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
   menuHomeBtn.onclick = () => {
     hamburgerMenu.hidden = true;
     detachKeyboardShortcuts();
-    cy.destroy();
+    canvas.destroy();
     onExit();
   };
 
@@ -1045,5 +995,7 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
     menuMetaEl.textContent = `Created ${new Date(thisGraph.created * 1000).toLocaleString()}`;
   }
 
+  rerender();
+  canvas.resetZoom();
   await refreshViolations();
 }

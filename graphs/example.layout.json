@@ -30,5 +30,20 @@
     ]
   },
   "edge_styles": {},
-  "sizes": {}
+  "sizes": {},
+  "edge_endpoints": {
+    "e5": {
+      "tgt": [
+        0,
+        1
+      ]
+    },
+    "e2": {
+      "tgt": [
+        0,
+        1
+      ]
+    }
+  },
+  "edge_elbows": {}
 }
