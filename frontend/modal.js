@@ -11,6 +11,7 @@ const confirmBtn = document.getElementById("modal-confirm-btn");
 
 function closeModal(result) {
   if (backdropEl) backdropEl.hidden = true;
+  if (confirmBtn) confirmBtn.className = "modal-btn primary";
   const resolve = activeResolver;
   activeResolver = null;
   resolve?.(result);
@@ -23,13 +24,14 @@ export function modalAlert(message, title = "Alert") {
     messageEl.textContent = message;
     inputEl.hidden = true;
     cancelBtn.hidden = true;
+    confirmBtn.className = "modal-btn primary";
     confirmBtn.textContent = "OK";
     backdropEl.hidden = false;
     confirmBtn.focus();
   });
 }
 
-export function modalConfirm(message, title = "Confirm") {
+export function modalConfirm(message, title = "Confirm", confirmText = "OK", isDanger = false) {
   return new Promise((resolve) => {
     activeResolver = resolve;
     titleEl.textContent = title;
@@ -37,13 +39,14 @@ export function modalConfirm(message, title = "Confirm") {
     inputEl.hidden = true;
     cancelBtn.hidden = false;
     cancelBtn.textContent = "Cancel";
-    confirmBtn.textContent = "OK";
+    confirmBtn.className = isDanger ? "modal-btn danger" : "modal-btn primary";
+    confirmBtn.textContent = confirmText;
     backdropEl.hidden = false;
     confirmBtn.focus();
   });
 }
 
-export function modalPrompt(message, defaultValue = "", title = "Prompt") {
+export function modalPrompt(message, defaultValue = "", title = "Prompt", confirmText = "OK") {
   return new Promise((resolve) => {
     activeResolver = resolve;
     titleEl.textContent = title;
@@ -52,7 +55,8 @@ export function modalPrompt(message, defaultValue = "", title = "Prompt") {
     inputEl.value = defaultValue;
     cancelBtn.hidden = false;
     cancelBtn.textContent = "Cancel";
-    confirmBtn.textContent = "OK";
+    confirmBtn.className = "modal-btn primary";
+    confirmBtn.textContent = confirmText;
     backdropEl.hidden = false;
     inputEl.focus();
     inputEl.select();

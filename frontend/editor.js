@@ -59,6 +59,8 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
 
   const issuesCountEl = document.getElementById("issues-count");
   const violationsList = document.getElementById("violations-list");
+  const issuesDialogEl = document.getElementById("issues-dialog");
+  const issuesCloseBtnEl = document.getElementById("issues-close");
 
   const leftIsland = document.getElementById("left-island");
   const leftIslandTitle = document.getElementById("left-island-title");
@@ -111,14 +113,18 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
 
   async function refreshViolations() {
     const violations = await validateGraph(graph);
-    issuesCountEl.textContent = violations.length || "";
-    violationsList.replaceChildren(
-      ...violations.map((violation) => {
-        const li = document.createElement("li");
-        li.textContent = violation;
-        return li;
-      })
-    );
+    if (issuesCountEl) {
+      issuesCountEl.textContent = violations.length || "";
+    }
+    if (violationsList) {
+      violationsList.replaceChildren(
+        ...violations.map((violation) => {
+          const li = document.createElement("li");
+          li.textContent = violation;
+          return li;
+        })
+      );
+    }
   }
 
   function snapshotState() {
@@ -1067,7 +1073,7 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
       closeLeftIsland();
       canvas.clearSelection();
       hamburgerMenu.hidden = true;
-      issuesDialog.hidden = true;
+      if (issuesDialogEl) issuesDialogEl.hidden = true;
     },
     onSelectMode: () => setMode("select"),
     onPanMode: () => setMode("pan"),
@@ -1130,10 +1136,22 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
     onRename(graphName);
   };
 
-  menuIssuesBtn.onclick = () => {
-    hamburgerMenu.hidden = true;
-    issuesDialog.hidden = !issuesDialog.hidden;
-  };
+  if (menuIssuesBtn) {
+    menuIssuesBtn.onclick = () => {
+      hamburgerMenu.hidden = true;
+      if (issuesDialogEl) {
+        issuesDialogEl.hidden = !issuesDialogEl.hidden;
+      }
+    };
+  }
+
+  if (issuesCloseBtnEl) {
+    issuesCloseBtnEl.onclick = () => {
+      if (issuesDialogEl) {
+        issuesDialogEl.hidden = true;
+      }
+    };
+  }
 
   const graphs = await fetch("/api/graphs").then((response) => response.json());
   const thisGraph = graphs.find((graphEntry) => graphEntry.name === graphName);

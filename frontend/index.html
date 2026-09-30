@@ -11,12 +11,14 @@
 </head>
 <body>
   <div id="home">
-    <h2>aag-studio</h2>
-    <p>A tool for building resource access graphs (RAGs): diagrams of how accounts, devices and credentials give access to each other.</p>
-    <h3>Your graphs</h3>
+    <h1>aag-studio</h1>
+    <p>A tool for building resource access graphs (RAGs).</p>
+    <p>Graphs are saved to <code>graphs/*.json</code> automatically.</p>
+    <div class="home-create">
+      <button id="new-graph-btn">New graph</button>
+    </div>
+    <h2 style="margin-top: 2em;">Open a saved graph</h2>
     <ul id="graph-list"></ul>
-    <input id="new-graph-name" placeholder="name for a new graph">
-    <button id="new-graph-btn">Create and open</button>
   </div>
 
   <div id="editor" hidden>
@@ -28,7 +30,7 @@
     <div id="hamburger-menu" class="floating-menu" hidden>
       <button id="menu-home"><i class="mdi mdi-home"></i> Home</button>
       <button id="menu-rename"><i class="mdi mdi-pencil-outline"></i> Rename graph</button>
-      <!-- <button id="menu-issues"><i class="mdi mdi-alert-circle-outline"></i> Issues <span id="issues-count"></span></button> -->
+      <button id="menu-issues"><i class="mdi mdi-alert-circle-outline"></i> Issues TODO <span id="issues-count"></span></button>
       <div id="menu-meta" class="menu-footer"></div>
     </div>
 
