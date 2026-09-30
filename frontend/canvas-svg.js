@@ -1,18 +1,24 @@
 import { BASE_ZOOM, GATE_NODE_SIZE, MIN_NODE_SIZE } from "./constants.js";
-import { topLevelKind } from "./graph-utils.js";
+import { topLevelKind, resourceSubtype } from "./graph-utils.js";
 
 const rootStyle = getComputedStyle(document.documentElement);
 const KIND_COLOR = {
-  resource: rootStyle.getPropertyValue("--kind-resource").trim() || "#4c8bf5",
-  agent: rootStyle.getPropertyValue("--kind-agent").trim() || "#f5a623",
-  A: rootStyle.getPropertyValue("--kind-A").trim() || "#7b7b7b",
+  resource: rootStyle.getPropertyValue("--kind-resource").trim() || "#4cc9c0",
+  agent: rootStyle.getPropertyValue("--kind-agent").trim() || "#f2a35c",
+  A: rootStyle.getPropertyValue("--kind-A").trim() || "#b0b0b0",
 };
-const KIND_DEFAULT_COLOR = rootStyle.getPropertyValue("--kind-default").trim() || "#999";
+const SUBTYPE_COLOR = {
+  credential: rootStyle.getPropertyValue("--subtype-credential").trim() || "#4cd08a",
+  device: rootStyle.getPropertyValue("--subtype-device").trim() || "#4cc9c0",
+  account: rootStyle.getPropertyValue("--subtype-account").trim() || "#4db8d9",
+  phone_number: rootStyle.getPropertyValue("--subtype-phone_number").trim() || "#6690e0",
+};
+const KIND_DEFAULT_COLOR = rootStyle.getPropertyValue("--kind-default").trim() || "#ccc";
 const SELECTED_COLOR = rootStyle.getPropertyValue("--color-selected").trim() || "#2f6fed";
 
 const textMeasureCanvas = document.createElement("canvas");
 const textMeasureCtx = textMeasureCanvas.getContext("2d");
-textMeasureCtx.font = "500 11px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+textMeasureCtx.font = "500 11px 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, sans-serif";
 
 export function getNodeDimensions(vertex, sizes, kind) {
   if (sizes[vertex.id]) {
@@ -430,6 +436,7 @@ export class CanvasSvg {
     if (!v) return null;
     const pos = this.positions[nodeId] || [0, 0];
     const kind = this.labelSet ? topLevelKind(v.label, this.labelSet.vertex_labels) : "resource";
+    const subtype = this.labelSet ? resourceSubtype(v.label, this.labelSet.vertex_labels) : null;
     const dims = getNodeDimensions(v, this.sizes, kind);
     return {
       id: nodeId,
@@ -438,6 +445,7 @@ export class CanvasSvg {
       width: dims.width,
       height: dims.height,
       kind,
+      subtype,
     };
   }
 
@@ -545,11 +553,35 @@ export class CanvasSvg {
       g.dataset.id = vertex.id;
       g.setAttribute("transform", `translate(${box.cx}, ${box.cy})`);
 
-      const color = KIND_COLOR[box.kind] || KIND_DEFAULT_COLOR;
+      const color = box.kind === "resource" && box.subtype
+        ? SUBTYPE_COLOR[box.subtype] || KIND_COLOR.resource
+        : KIND_COLOR[box.kind] || KIND_DEFAULT_COLOR;
       const strokeColor = isSelected || isHovered ? SELECTED_COLOR : "none";
       const strokeWidth = isSelected || isHovered ? "2.5" : "0";
 
-      if (box.kind === "A") {
+      if (box.kind === "agent") {
+        const rx = box.width / 2;
+        const ry = box.height / 2;
+        const ellipse = document.createElementNS("http://www.w3.org/2000/svg", "ellipse");
+        ellipse.setAttribute("rx", rx);
+        ellipse.setAttribute("ry", ry);
+        ellipse.setAttribute("fill", color);
+        ellipse.setAttribute("stroke", strokeColor);
+        ellipse.setAttribute("stroke-width", strokeWidth);
+        g.append(ellipse);
+
+        const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        text.setAttribute("x", 0);
+        text.setAttribute("y", 0);
+        text.setAttribute("text-anchor", "middle");
+        text.setAttribute("dominant-baseline", "central");
+        text.setAttribute("fill", "#111");
+        text.setAttribute("font-size", "11");
+        text.setAttribute("font-weight", "500");
+        text.setAttribute("pointer-events", "none");
+        text.textContent = vertex.label;
+        g.append(text);
+      } else if (box.kind === "A") {
         const polygon = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
         const hw = box.width / 2;
         const hh = box.height / 2;
@@ -564,13 +596,13 @@ export class CanvasSvg {
         text.setAttribute("y", 0);
         text.setAttribute("text-anchor", "middle");
         text.setAttribute("dominant-baseline", "central");
-        text.setAttribute("fill", "#fff");
+        text.setAttribute("fill", "#111");
         text.setAttribute("pointer-events", "none");
 
         const sub = vertex.label === "fallback" ? "f" : vertex.label === "primary" ? "p" : (vertex.label !== "A" ? vertex.label[0] : "");
         if (sub) {
           const tspanA = document.createElementNS("http://www.w3.org/2000/svg", "tspan");
-          tspanA.setAttribute("font-size", "11");
+          tspanA.setAttribute("font-size", "10");
           tspanA.setAttribute("font-weight", "600");
           tspanA.textContent = "A";
 
@@ -582,7 +614,7 @@ export class CanvasSvg {
 
           text.append(tspanA, tspanSub);
         } else {
-          text.setAttribute("font-size", "11");
+          text.setAttribute("font-size", "10");
           text.setAttribute("font-weight", "600");
           text.textContent = "A";
         }
@@ -605,7 +637,7 @@ export class CanvasSvg {
         text.setAttribute("y", 0);
         text.setAttribute("text-anchor", "middle");
         text.setAttribute("dominant-baseline", "central");
-        text.setAttribute("fill", "#fff");
+        text.setAttribute("fill", "#111");
         text.setAttribute("font-size", "11");
         text.setAttribute("font-weight", "500");
         text.setAttribute("pointer-events", "none");

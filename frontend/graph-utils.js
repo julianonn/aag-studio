@@ -5,6 +5,15 @@ export function topLevelKind(label, vertexParents) {
   return parents.length === 0 ? label : topLevelKind(parents[0], vertexParents);
 }
 
+const RESOURCE_SUBTYPES = ["credential", "device", "account", "phone_number"];
+
+export function resourceSubtype(label, vertexParents) {
+  if (RESOURCE_SUBTYPES.includes(label)) return label;
+  const parents = vertexParents[label] ?? [];
+  if (parents.length === 0) return null;
+  return resourceSubtype(parents[0], vertexParents);
+}
+
 function isA(vertexParents, label, ancestor) {
   return label === ancestor || (vertexParents[label] ?? []).some((parent) => isA(vertexParents, parent, ancestor));
 }
