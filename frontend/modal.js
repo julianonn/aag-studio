@@ -79,3 +79,22 @@ window.addEventListener("keydown", (evt) => {
     closeModal(inputEl.hidden ? true : inputEl.value);
   }
 });
+
+export async function promptNewGraph() {
+  const name = await modalPrompt("Graph name (saves to graphs/*.json):", "", "New graph");
+  if (!name) return null;
+  const trimmed = name.trim();
+  return trimmed || null;
+}
+
+export async function promptRenameGraph(currentName) {
+  const newName = await modalPrompt("New name:", currentName, "Rename graph");
+  if (!newName) return null;
+  const trimmed = newName.trim();
+  if (!trimmed || trimmed === currentName) return null;
+  return trimmed;
+}
+
+export async function confirmDeleteGraph(name) {
+  return modalConfirm(`Are you sure you want to delete "${name}"?`, "Delete graph", "Delete");
+}
