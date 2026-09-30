@@ -604,7 +604,7 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
 
   function createSectionTitle(text) {
     const title = document.createElement("div");
-    title.className = "island-section-title";
+    title.className = "island-field-label";
     title.textContent = text;
     return title;
   }
@@ -670,9 +670,7 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
       typeGroup.append(btn);
     }
 
-    const timeTitle = document.createElement("div");
-    timeTitle.className = "island-section-title";
-    timeTitle.textContent = "Time";
+    const timeTitle = createSectionTitle("Time");
 
     const timeRow = document.createElement("div");
     timeRow.className = "island-time-row";
@@ -697,9 +695,7 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
 
     timeRow.append(fromInput, toSpan, untilInput);
 
-    const styleTitle = document.createElement("div");
-    styleTitle.className = "island-section-title";
-    styleTitle.textContent = "Style";
+    const styleTitle = createSectionTitle("Style");
 
     const styleGroup = document.createElement("div");
     styleGroup.className = "island-btn-group";
@@ -803,6 +799,7 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
     const row = document.createElement("div");
     row.className = "field-row";
     const label = document.createElement("label");
+    label.className = "island-field-label";
     label.textContent = labelText;
     row.append(label, inputEl);
     return row;
@@ -889,9 +886,7 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
       typeGroup.append(btn);
     }
 
-    const timeTitle = document.createElement("div");
-    timeTitle.className = "island-section-title";
-    timeTitle.textContent = "Time";
+    const timeTitle = createSectionTitle("Time");
 
     const intervals = edge.time?.length ? edge.time : [[0, null]];
     const timeRows = intervals.map((interval, intervalIndex) => {
@@ -933,9 +928,7 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
     });
 
     const currentStyle = edgeStyles[edge.id] ?? "bezier";
-    const styleTitle = document.createElement("div");
-    styleTitle.className = "island-section-title";
-    styleTitle.textContent = "Style";
+    const styleTitle = createSectionTitle("Style");
 
     const styleGroup = document.createElement("div");
     styleGroup.className = "island-btn-group";
@@ -957,9 +950,7 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
     const bottomItems = [];
 
     if (currentStyle === "taxi") {
-      const elbowTitle = document.createElement("div");
-      elbowTitle.className = "island-section-title";
-      elbowTitle.textContent = "Elbow Offset";
+      const elbowTitle = createSectionTitle("Elbow Offset");
 
       const elbowInput = document.createElement("input");
       elbowInput.type = "number";
