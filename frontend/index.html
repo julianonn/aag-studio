@@ -1,5 +1,5 @@
 <!doctype html>
-<html>
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <title>aag-studio</title>
@@ -15,7 +15,7 @@
     <p>A tool for building resource access graphs (RAGs).</p>
     <p>Graphs are saved to <code>graphs/*.json</code> automatically.</p>
     <div class="home-create">
-      <button id="new-graph-btn">New graph</button>
+      <button id="new-graph-btn" type="button">New graph</button>
     </div>
     <h2 style="margin-top: 2em;">Open a saved graph</h2>
     <ul id="graph-list"></ul>
@@ -23,38 +23,38 @@
 
   <div id="editor" hidden>
     <div id="top-left-bar" class="floating-island">
-      <button id="btn-hamburger" title="Menu"><i class="mdi mdi-menu"></i></button>
+      <button id="btn-hamburger" type="button" title="Menu"><i class="mdi mdi-menu"></i></button>
       <span id="graph-name"></span>
     </div>
 
     <div id="hamburger-menu" class="floating-menu" hidden>
-      <button id="menu-home"><i class="mdi mdi-home"></i> Home</button>
-      <button id="menu-rename"><i class="mdi mdi-pencil-outline"></i> Rename graph</button>
-      <button id="menu-issues"><i class="mdi mdi-alert-circle-outline"></i> Issues TODO <span id="issues-count"></span></button>
+      <button id="menu-home" type="button"><i class="mdi mdi-home"></i> Home</button>
+      <button id="menu-rename" type="button"><i class="mdi mdi-pencil-outline"></i> Rename graph</button>
+      <button id="menu-issues" type="button"><i class="mdi mdi-alert-circle-outline"></i> Issues TODO <span id="issues-count"></span></button>
       <div id="menu-meta" class="menu-footer"></div>
     </div>
 
     <div id="tool-island" class="floating-island">
-      <button id="tool-pan" class="active" title="Pan (H or hold Space)"><i class="mdi mdi-hand-back-right"></i></button>
-      <button id="tool-select" title="Select (V)"><i class="mdi mdi-cursor-default"></i></button>
+      <button id="tool-pan" type="button" class="active" title="Pan (H or hold Space)"><i class="mdi mdi-hand-back-right"></i></button>
+      <button id="tool-select" type="button" title="Select (V)"><i class="mdi mdi-cursor-default"></i></button>
       <span class="island-divider"></span>
-      <button id="tool-add-vertex" title="Add vertex"><i class="mdi mdi-plus-box-outline"></i> Add vertex</button>
-      <button id="tool-add-edge" title="Add edge"><i class="mdi mdi-vector-line"></i> Add edge</button>
+      <button id="tool-add-vertex" type="button" title="Add vertex"><i class="mdi mdi-plus-box-outline"></i> Add vertex</button>
+      <button id="tool-add-edge" type="button" title="Add edge"><i class="mdi mdi-vector-line"></i> Add edge</button>
     </div>
 
     <div id="top-right-island" class="floating-island">
-      <button id="btn-undo" title="Undo (Cmd+Z)"><i class="mdi mdi-undo"></i></button>
-      <button id="btn-redo" title="Redo (Cmd+Y)"><i class="mdi mdi-redo"></i></button>
+      <button id="btn-undo" type="button" title="Undo (Cmd+Z)"><i class="mdi mdi-undo"></i></button>
+      <button id="btn-redo" type="button" title="Redo (Cmd+Y)"><i class="mdi mdi-redo"></i></button>
       <span class="island-divider"></span>
-      <button id="btn-zoom-out" title="Zoom out"><i class="mdi mdi-minus"></i></button>
-      <button id="btn-zoom-reset" title="Reset zoom">100%</button>
-      <button id="btn-zoom-in" title="Zoom in"><i class="mdi mdi-plus"></i></button>
+      <button id="btn-zoom-out" type="button" title="Zoom out"><i class="mdi mdi-minus"></i></button>
+      <button id="btn-zoom-reset" type="button" title="Reset zoom">100%</button>
+      <button id="btn-zoom-in" type="button" title="Zoom in"><i class="mdi mdi-plus"></i></button>
     </div>
 
     <div id="left-island" class="floating-island left-island" hidden>
       <div class="island-header">
         <strong id="left-island-title">Vertex</strong>
-        <button id="left-island-close" title="Close"><i class="mdi mdi-close"></i></button>
+        <button id="left-island-close" type="button" title="Close"><i class="mdi mdi-close"></i></button>
       </div>
       <div id="left-island-body" class="island-body"></div>
     </div>
@@ -62,12 +62,13 @@
     <div id="issues-dialog" class="floating-island right-dialog" hidden>
       <div class="island-header">
         <strong>Issues</strong>
-        <button id="issues-close"><i class="mdi mdi-close"></i></button>
+        <button id="issues-close" type="button"><i class="mdi mdi-close"></i></button>
       </div>
       <ul id="violations-list"></ul>
     </div>
 
     <svg id="canvas-svg">
+      <title>Graph Canvas</title>
       <defs>
         <pattern id="canvas-grid" width="24" height="24" patternUnits="userSpaceOnUse">
           <circle cx="12" cy="12" r="1" fill="#d8dbe0" />
@@ -97,8 +98,8 @@
       <div id="modal-message" class="modal-message"></div>
       <input id="modal-input" class="modal-input" hidden>
       <div class="modal-actions">
-        <button id="modal-cancel-btn" class="modal-btn secondary">Cancel</button>
-        <button id="modal-confirm-btn" class="modal-btn primary">OK</button>
+        <button id="modal-cancel-btn" type="button" class="modal-btn secondary">Cancel</button>
+        <button id="modal-confirm-btn" type="button" class="modal-btn primary">OK</button>
       </div>
     </div>
   </div>
