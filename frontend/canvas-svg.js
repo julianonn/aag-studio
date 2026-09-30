@@ -3,22 +3,22 @@ import { resourceSubtype, topLevelKind } from "./graph-utils.js";
 
 const rootStyle = getComputedStyle(document.documentElement);
 const KIND_COLOR = {
-	resource: rootStyle.getPropertyValue("--kind-resource").trim() || "#4cc9c0",
-	agent: rootStyle.getPropertyValue("--kind-agent").trim() || "#f2a35c",
-	A: rootStyle.getPropertyValue("--kind-A").trim() || "#b0b0b0",
+	resource: rootStyle.getPropertyValue("--kind-resource").trim(),
+	agent: rootStyle.getPropertyValue("--kind-agent").trim(),
+	A: rootStyle.getPropertyValue("--kind-A").trim(),
 };
 const SUBTYPE_COLOR = {
 	credential:
-		rootStyle.getPropertyValue("--subtype-credential").trim() || "#4cd08a",
-	device: rootStyle.getPropertyValue("--subtype-device").trim() || "#4cc9c0",
-	account: rootStyle.getPropertyValue("--subtype-account").trim() || "#4db8d9",
+		rootStyle.getPropertyValue("--subtype-credential").trim(),
+	device: rootStyle.getPropertyValue("--subtype-device").trim(),
+	account: rootStyle.getPropertyValue("--subtype-account").trim(),
 	phone_number:
-		rootStyle.getPropertyValue("--subtype-phone_number").trim() || "#6690e0",
+		rootStyle.getPropertyValue("--subtype-phone_number").trim(),
 };
 const KIND_DEFAULT_COLOR =
-	rootStyle.getPropertyValue("--kind-default").trim() || "#ccc";
+	rootStyle.getPropertyValue("--kind-default").trim();
 const SELECTED_COLOR =
-	rootStyle.getPropertyValue("--color-selected").trim() || "#2f6fed";
+	rootStyle.getPropertyValue("--color-selected").trim();
 
 const textMeasureCanvas = document.createElement("canvas");
 const textMeasureCtx = textMeasureCanvas.getContext("2d");
