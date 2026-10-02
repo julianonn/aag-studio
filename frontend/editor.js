@@ -118,17 +118,21 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
 			});
 			canvas.select(edgeId, "edge");
 		},
-		onUpdateEdgeTime: async (edgeId, intervalIndex, newInterval) => {
-			const edge = graph.edges.find((e) => e.id === edgeId);
-			const intervals = edge?.time?.length ? edge.time : [[0, null]];
+		onUpdateEdgeTime: async (edgeId, arg1, arg2) => {
+			let newRules;
+			if (Array.isArray(arg1)) {
+				newRules = arg1;
+			} else {
+				const edge = graph.edges.find((e) => e.id === edgeId);
+				const intervals = edge?.time?.length ? edge.time : [];
+				newRules = intervals.map((iv, idx) => (idx === arg1 ? arg2 : iv));
+			}
 			const newEdges = graph.edges.map((graphEdge) =>
 				graphEdge.id !== edgeId
 					? graphEdge
 					: {
 							...graphEdge,
-							time: intervals.map((iv, idx) =>
-								idx === intervalIndex ? newInterval : iv,
-							),
+							time: newRules,
 						},
 			);
 			await applyGraph({ vertices: graph.vertices, edges: newEdges });
@@ -556,7 +560,7 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
 			src: sourceId,
 			tgt: targetId,
 			label,
-			time: time ?? [[0, null]],
+			time: time ?? [],
 		};
 		const ok = await applyGraph({
 			vertices: graph.vertices,
@@ -771,9 +775,7 @@ export async function openEditor(graphName, labelSet, { onExit, onRename }) {
 	}
 
 	function getSelectedEdgeTime() {
-		return [
-			[parseTimeBound(edgeTimeFromVal), parseTimeBound(edgeTimeUntilVal)],
-		];
+		return [];
 	}
 
 	function closeLeftIsland() {

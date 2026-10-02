@@ -1,4 +1,5 @@
 import { renderPalette } from "./palette.js";
+import { closeActiveCalendar, openCalendarPopup } from "./calendar_popup.js";
 
 export function parseTimeBound(val) {
 	if (val === null || val === undefined) return null;
@@ -8,6 +9,31 @@ export function parseTimeBound(val) {
 	}
 	const num = Number(trimmed);
 	return Number.isNaN(num) ? trimmed : num;
+}
+
+export function normalizeTimeRules(time) {
+	if (!Array.isArray(time) || time.length === 0) {
+		return [];
+	}
+	return time
+		.map((item) => {
+			if (Array.isArray(item)) {
+				if (item[0] !== null && item[0] !== undefined && item[0] !== 0) {
+					return { mode: "relative", op: "at least", value: item[0], unit: "min" };
+				}
+				if (item[1] !== null && item[1] !== undefined && item[1] !== "inf") {
+					return { mode: "relative", op: "at most", value: item[1], unit: "min" };
+				}
+				return null;
+			}
+			return {
+				mode: item.mode || "",
+				op: item.op || "",
+				value: item.value ?? "",
+				unit: item.unit ?? "",
+			};
+		})
+		.filter(Boolean);
 }
 
 export function initEditorLeftIsland({
@@ -40,6 +66,7 @@ export function initEditorLeftIsland({
 	}
 
 	function close() {
+		closeActiveCalendar();
 		currentMode = null;
 		if (leftIsland) leftIsland.hidden = true;
 		if (leftIslandBody) leftIslandBody.replaceChildren();
@@ -57,7 +84,7 @@ export function initEditorLeftIsland({
 
 	function createSectionTitle(text) {
 		const title = document.createElement("div");
-		title.className = "island-field-label";
+		title.className = "island-field-label island-section-title";
 		title.textContent = text;
 		return title;
 	}
@@ -152,39 +179,213 @@ export function initEditorLeftIsland({
 			typeGroup.append(btn);
 		}
 
-		const timeTitle = createSectionTitle("Time");
-		const intervals = edge.time?.length ? edge.time : [[0, null]];
-		const timeRows = intervals.map((interval, intervalIndex) => {
+		const rules = normalizeTimeRules(edge.time);
+
+		function updateRules(newRules) {
+			closeActiveCalendar();
+			onUpdateEdgeTime(edge.id, newRules);
+			showEdge({ ...edge, time: newRules }, edgeStyles, edgeElbows);
+		}
+
+		const timeHeader = document.createElement("div");
+		timeHeader.className = "island-section-header";
+		const timeTitle = createSectionTitle("Time Rules");
+		const addBtn = document.createElement("button");
+		addBtn.type = "button";
+		addBtn.className = "island-time-icon-btn";
+		addBtn.innerHTML = '<i class="mdi mdi-plus-circle-outline"></i>';
+		addBtn.title = "Add rule";
+		addBtn.onclick = () => {
+			closeActiveCalendar();
+			const updated = [...rules, { mode: "", op: "", value: "", unit: "" }];
+			updateRules(updated);
+		};
+		timeHeader.append(timeTitle, addBtn);
+
+		const timeElements = [];
+		for (let index = 0; index < rules.length; index++) {
+			const rule = rules[index];
 			const row = document.createElement("div");
 			row.className = "island-time-row";
-			const fromInput = document.createElement("input");
-			fromInput.className = "island-time-input";
-			fromInput.type = "text";
-			fromInput.value = interval[0] ?? "";
-			fromInput.placeholder = "0";
 
-			const toSpan = document.createElement("span");
-			toSpan.textContent = "to";
+			const controls = document.createElement("div");
+			controls.className = "island-time-controls";
 
-			const untilInput = document.createElement("input");
-			untilInput.className = "island-time-input";
-			untilInput.type = "text";
-			untilInput.value = interval[1] ?? "";
-			untilInput.placeholder = "inf";
+			const modeSelect = document.createElement("select");
+			modeSelect.className = "island-time-select";
+			const optBlank = document.createElement("option");
+			optBlank.value = "";
+			optBlank.textContent = "—";
+			const optRel = document.createElement("option");
+			optRel.value = "relative";
+			optRel.textContent = "Relative";
+			const optAbs = document.createElement("option");
+			optAbs.value = "absolute";
+			optAbs.textContent = "Absolute";
+			modeSelect.append(optBlank, optRel, optAbs);
+			modeSelect.value = rule.mode || "";
+			modeSelect.onchange = () => {
+				closeActiveCalendar();
+				const updated = [...rules];
+				const isRel = modeSelect.value === "relative";
+				const isAbs = modeSelect.value === "absolute";
+				if (isRel) {
+					updated[index] = {
+						mode: "relative",
+						op: "at most",
+						value: "",
+						unit: "min",
+					};
+				} else if (isAbs) {
+					updated[index] = {
+						mode: "absolute",
+						op: "before",
+						value: "",
+						unit: undefined,
+					};
+				} else {
+					updated[index] = {
+						mode: "",
+						op: "",
+						value: "",
+						unit: "",
+					};
+				}
+				updateRules(updated);
+			};
 
-			function commit() {
-				const newInterval = [
-					fromInput.value === "" ? null : parseTimeBound(fromInput.value),
-					untilInput.value === "" ? null : parseTimeBound(untilInput.value),
-				];
-				onUpdateEdgeTime(edge.id, intervalIndex, newInterval);
+			controls.append(modeSelect);
+
+			if (rule.mode === "relative") {
+				const sep = document.createElement("span");
+				sep.className = "island-endpoint-node island-time-dash";
+				sep.textContent = "—";
+
+				const opSelect = document.createElement("select");
+				opSelect.className = "island-time-select";
+				const op1 = document.createElement("option");
+				op1.value = "at most";
+				op1.textContent = "at most";
+				const op2 = document.createElement("option");
+				op2.value = "at least";
+				op2.textContent = "at least";
+				opSelect.append(op1, op2);
+				opSelect.value = rule.op === "at least" ? "at least" : "at most";
+				opSelect.onchange = () => {
+					closeActiveCalendar();
+					const updated = [...rules];
+					updated[index] = { ...rule, op: opSelect.value };
+					updateRules(updated);
+				};
+
+				const valInput = document.createElement("input");
+				valInput.type = "text";
+				valInput.className = "island-time-input island-time-num-input";
+				valInput.placeholder = "0";
+				valInput.value = rule.value ?? "";
+				valInput.onchange = () => {
+					const updated = [...rules];
+					const trimmed = valInput.value.trim();
+					const num = Number(trimmed);
+					updated[index] = { ...rule, value: (trimmed !== "" && !Number.isNaN(num)) ? num : trimmed };
+					updateRules(updated);
+				};
+
+				const unitSelect = document.createElement("select");
+				unitSelect.className = "island-time-select";
+				for (const u of ["sec", "min", "hour", "day"]) {
+					const opt = document.createElement("option");
+					opt.value = u;
+					opt.textContent = u;
+					unitSelect.append(opt);
+				}
+				unitSelect.value = rule.unit || "min";
+				unitSelect.onchange = () => {
+					closeActiveCalendar();
+					const updated = [...rules];
+					updated[index] = { ...rule, unit: unitSelect.value };
+					updateRules(updated);
+				};
+
+				const suffix = document.createElement("span");
+				suffix.className = "island-endpoint-node";
+				suffix.textContent = "after source";
+
+				controls.append(sep, opSelect, valInput, unitSelect, suffix);
+			} else if (rule.mode === "absolute") {
+				const sep = document.createElement("span");
+				sep.className = "island-endpoint-node island-time-dash";
+				sep.textContent = "—";
+
+				const opSelect = document.createElement("select");
+				opSelect.className = "island-time-select";
+				const op1 = document.createElement("option");
+				op1.value = "before";
+				op1.textContent = "before";
+				const op2 = document.createElement("option");
+				op2.value = "after";
+				op2.textContent = "after";
+				opSelect.append(op1, op2);
+				opSelect.value = rule.op === "after" ? "after" : "before";
+				opSelect.onchange = () => {
+					closeActiveCalendar();
+					const updated = [...rules];
+					updated[index] = { ...rule, op: opSelect.value };
+					updateRules(updated);
+				};
+
+				const dateInput = document.createElement("input");
+				dateInput.type = "text";
+				dateInput.className = "island-time-input island-time-date-input";
+				dateInput.placeholder = "YYYY-MM-DD";
+				dateInput.value = rule.value ?? "";
+				dateInput.onchange = () => {
+					const updated = [...rules];
+					updated[index] = { ...rule, value: dateInput.value.trim() };
+					updateRules(updated);
+				};
+				dateInput.onkeydown = (e) => {
+					if (e.key === "Enter") {
+						dateInput.blur();
+					}
+				};
+
+				const calBtn = document.createElement("button");
+				calBtn.type = "button";
+				calBtn.className = "island-time-icon-btn";
+				calBtn.innerHTML = '<i class="mdi mdi-calendar"></i>';
+				calBtn.title = "Open calendar";
+				calBtn.onclick = (e) => {
+					e.stopPropagation();
+					openCalendarPopup({
+						anchorEl: calBtn,
+						initialValue: dateInput.value.trim() || rule.value || "",
+						onChange: (newVal) => {
+							dateInput.value = newVal;
+							const updated = [...rules];
+							updated[index] = { ...rule, value: newVal };
+							onUpdateEdgeTime(edge.id, updated);
+						},
+					});
+				};
+
+				controls.append(sep, opSelect, dateInput, calBtn);
 			}
-			fromInput.onchange = commit;
-			untilInput.onchange = commit;
 
-			row.append(fromInput, toSpan, untilInput);
-			return row;
-		});
+			const delBtn = document.createElement("button");
+			delBtn.type = "button";
+			delBtn.className = "island-time-icon-btn";
+			delBtn.innerHTML = '<i class="mdi mdi-minus-circle-outline"></i>';
+			delBtn.title = "Remove rule";
+			delBtn.onclick = () => {
+				closeActiveCalendar();
+				const updated = rules.filter((_, i) => i !== index);
+				updateRules(updated);
+			};
+
+			row.append(controls, delBtn);
+			timeElements.push(row);
+		}
 
 		const currentStyle = edgeStyles[edge.id] ?? "bezier";
 		const styleTitle = createSectionTitle("Style");
@@ -234,8 +435,8 @@ export function initEditorLeftIsland({
 				endpointsVal,
 				typeTitle,
 				typeGroup,
-				timeTitle,
-				...timeRows,
+				timeHeader,
+				...timeElements,
 				styleTitle,
 				styleGroup,
 				...bottomItems,

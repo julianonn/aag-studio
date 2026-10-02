@@ -47,24 +47,14 @@
       "src": "iphone_passcode",
       "tgt": "am_unlock",
       "label": "ga",
-      "time": [
-        [
-          0,
-          null
-        ]
-      ]
+      "time": []
     },
     {
       "id": "e4",
       "src": "am_unlock",
       "tgt": "my_phone",
       "label": "ga",
-      "time": [
-        [
-          0,
-          null
-        ]
-      ]
+      "time": []
     },
     {
       "id": "e5",
@@ -72,10 +62,12 @@
       "tgt": "apple_password",
       "label": "ha",
       "time": [
-        [
-          0,
-          null
-        ]
+        {
+          "mode": "absolute",
+          "op": "after",
+          "value": "2026-10-01",
+          "unit": ""
+        }
       ]
     },
     {
@@ -95,24 +87,7 @@
       "src": "am_apple",
       "tgt": "***@icloud.com",
       "label": "ga",
-      "time": [
-        [
-          0,
-          null
-        ]
-      ]
-    },
-    {
-      "id": "e_1",
-      "src": "am_unlock",
-      "tgt": "***@icloud.com",
-      "label": "ga",
-      "time": [
-        [
-          "inf",
-          "inf"
-        ]
-      ]
+      "time": []
     }
   ]
 }

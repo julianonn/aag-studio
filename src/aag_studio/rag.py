@@ -8,6 +8,13 @@ from pydantic import BaseModel
 Interval = tuple[int | str, int | str | None]
 
 
+class TimeRule(BaseModel):
+    mode: str = "relative"  # "relative" | "absolute"
+    op: str = "before"  # "before" | "after"
+    value: int | float | str
+    unit: str | None = None  # "sec" | "min" | "hour" | "day"
+
+
 class LabelSet:
     def __init__(
         self,
@@ -50,7 +57,7 @@ class Edge(BaseModel):
     src: str
     tgt: str
     label: str
-    time: list[Interval]
+    time: list[TimeRule | Interval]
 
 
 class Graph(BaseModel):

@@ -172,3 +172,25 @@ def test_specific_label_matches_general_rule(label_set):
         ],
     )
     assert validate_rag(graph, label_set) == []
+
+
+def test_time_rules_are_valid(label_set):
+    graph = make_graph(
+        vertices=[
+            {"id": "usr", "label": "user"},
+            {"id": "apple_pw", "label": "password"},
+        ],
+        edges=[
+            {
+                "id": "e1",
+                "src": "usr",
+                "tgt": "apple_pw",
+                "label": "ha",
+                "time": [
+                    {"mode": "relative", "op": "before", "value": 5, "unit": "min"},
+                    {"mode": "absolute", "op": "after", "value": "2026-10-01T09:00"},
+                ],
+            }
+        ],
+    )
+    assert validate_rag(graph, label_set) == []
